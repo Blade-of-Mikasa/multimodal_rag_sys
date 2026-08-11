@@ -53,6 +53,28 @@ LLM
 
 一次请求最多触发 6 路召回，也可以根据问题只执行其中部分任务。
 
+实现上采用双层架构：
+
+```text
+React 展示层
+↓
+Python 业务表层
+├── FastAPI / 鉴权 / 会话 / 流式响应
+├── Query Planner
+├── LLM / Embedding / Vision / ASR 通用接口
+├── 联网搜索与网页抽取适配器
+└── 评估与离线任务编排
+↓ gRPC / Protobuf
+C++20 核心引擎
+├── 请求生命周期与多路并发调度
+├── 本地文档 / 图片 / 视频 Retriever
+├── 召回结果归一化、去重与确定性冲突规则
+├── 上下文与引用构建
+└── 索引切分、指纹计算与批量写入
+```
+
+Python 与 C++ 默认以独立进程部署，通过版本化 Protobuf 契约通信。只有无需独立扩缩容、不会阻塞 Python 事件循环的纯本地算法，才考虑使用 `pybind11` 作为可选优化。
+
 ---
 
 ## 3. 在线流程
@@ -128,7 +150,7 @@ API 层负责：
 
 ## 4. 核心引擎
 
-核心引擎负责整个请求生命周期：
+核心引擎使用 C++20 实现为独立服务，负责整个请求生命周期。Python API 根据召回计划通过 gRPC 调用核心引擎：
 
 ```text
 收到召回计划
@@ -150,12 +172,16 @@ API 层负责：
 调用 LLM
 ```
 
-建议每种召回能力实现统一接口：
+建议每种召回能力在 C++ 核心中实现统一接口：
 
-```python
-class Retriever:
-    async def retrieve(self, query, options):
-        ...
+```cpp
+class Retriever {
+ public:
+  virtual ~Retriever() = default;
+  virtual RetrievalTask Retrieve(
+      const Query& query,
+      const RetrieveOptions& options) = 0;
+};
 ```
 
 例如：
@@ -174,14 +200,13 @@ WebVideoRetriever
 
 ### 4.1 并行召回
 
-各路召回原则上相互独立，使用异步并发执行。
+各路召回原则上相互独立，由 C++ 核心使用协程或异步任务并发执行。可采用 C++20 Coroutine + Boost.Asio，并对外暴露 gRPC 异步服务。
 
-```python
-results = await gather(
-    retrieve_local_document(),
-    retrieve_web_document(),
-    retrieve_web_image()
-)
+```cpp
+auto results = co_await WhenAll(
+    local_document_retriever.Retrieve(query, options),
+    web_document_retriever.Retrieve(query, options),
+    web_image_retriever.Retrieve(query, options));
 ```
 
 每个召回任务设置独立超时，例如：
@@ -701,72 +726,84 @@ LLM 输出 Token
 第一版建议采用简单方案快速完成闭环：
 
 ```text
-Python
+React + TypeScript + Vite
 ↓
-FastAPI
+Python 3.11 + FastAPI + Pydantic
+├── LLM 问题理解与模型通用接口
+├── 联网搜索 / 网页抽取适配器
+├── 流式回答与引用返回
+└── Kafka 离线任务编排
+↓ gRPC / Protobuf
+C++20 核心引擎
+├── 多路 Retriever 并发调度
+├── Milvus dense + BM25 混合召回
+├── 去重与确定性冲突规则
+├── 上下文 / citation 构建
+└── 切片、指纹与批量索引写入
 ↓
-异步核心引擎
-↓
-LLM 问题理解
-↓
-多路 Retriever
-↓
-向量数据库 + 文本索引
-↓
-简单去重
-↓
-LLM 冲突判断
-↓
-上下文构建
-↓
-LLM 回答
+MySQL + Milvus + Redis + S3 对象存储 + Kafka
 ```
 
 代码结构可以拆为：
 
 ```text
-app/
-├── api/
-│   └── chat.py
-│
-├── planner/
-│   └── query_planner.py
-│
-├── engine/
-│   └── rag_engine.py
-│
-├── retriever/
-│   ├── local_document.py
-│   ├── local_image.py
-│   ├── local_video.py
-│   ├── web_document.py
-│   ├── web_image.py
-│   └── web_video.py
-│
-├── evidence/
-│   ├── dedup.py
-│   ├── conflict.py
-│   └── context_builder.py
-│
-├── ingestion/
-│   ├── document.py
-│   ├── image.py
-│   └── video.py
-│
-├── storage/
-│   ├── vector.py
-│   ├── metadata.py
-│   └── object.py
-│
-├── evaluation/
-│   ├── dataset.py
-│   ├── retrieval_eval.py
-│   ├── conflict_eval.py
-│   ├── answer_eval.py
-│   └── report.py
-│
-└── llm/
-    └── client.py
+frontend/
+└── src/                         # React / TypeScript
+
+proto/
+└── rag_core.proto               # Python / C++ 版本化通信契约
+
+services/python_api/
+└── app/
+    ├── api/                     # FastAPI / 流式回答
+    ├── planner/                 # Query Planner
+    ├── core_client/             # grpc.aio C++ Core Client
+    ├── model/                   # Chat / Embedding / Vision / ASR 通用接口
+    ├── web/                     # SearchProvider / 网页抽取
+    ├── storage/                 # MySQL / Redis / S3 适配器
+    └── evaluation/
+
+services/python_worker/
+└── app/
+    ├── consumer/                # Kafka consumer / retry / DLQ
+    └── ingestion/               # Docling / PaddleOCR / Whisper 适配器
+
+core/
+├── CMakeLists.txt
+├── include/rag_core/
+│   ├── engine/                  # 生命周期、异步调度、超时与降级
+│   ├── retriever/               # 文档 / 图片 / 视频 Retriever
+│   ├── evidence/                # 归一化、去重、确定性冲突规则
+│   ├── context/                 # Token 预算与 citation 构建
+│   ├── indexing/                # 切片、指纹与 batch upsert
+│   └── storage/                 # Milvus 客户端封装
+├── src/
+└── tests/                       # GoogleTest
+```
+
+C++ 部分建议使用：
+
+```text
+C++20
+CMake + Conan（或 vcpkg，项目中只选一个）
+gRPC + Protobuf
+Boost.Asio / C++20 Coroutine
+Milvus C++ SDK
+simdjson + xxHash
+OpenTelemetry C++
+GoogleTest
+```
+
+Python 与 C++ 的职责边界：
+
+```text
+适合 Python：
+API、鉴权、会话、Planner、模型供应商适配、联网 API、
+文档模型工具编排、Kafka 状态机、评估与快速迭代逻辑
+
+适合 C++：
+高并发召回、批量向量请求、结果归一化、指纹与去重、
+规则执行、上下文裁剪、批量索引写入和 CPU 密集型处理
 ```
 
 ---

@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package multimodal.rag.v1;
+
+option cc_enable_arenas = true;
+
+// RagCoreService is the stable process boundary between the Python surface
+// layer and the C++ retrieval/evidence core.
+service RagCoreService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc ExecutePlan(ExecutePlanRequest) returns (ExecutePlanResponse);
+}
+
+// IndexCoreService accepts normalized multimodal units from Python ingestion
+// adapters and performs deterministic preparation and index upserts in C++.
+service IndexCoreService {
+  rpc IndexAsset(IndexAssetRequest) returns (IndexAssetResponse);
+}
+
+enum SourceScope {
+  SOURCE_SCOPE_UNSPECIFIED = 0;
+  SOURCE_SCOPE_LOCAL = 1;
+  SOURCE_SCOPE_WEB = 2;
+}
+
+enum Modality {
+  MODALITY_UNSPECIFIED = 0;
+  MODALITY_DOCUMENT = 1;
+  MODALITY_IMAGE = 2;
+  MODALITY_VIDEO = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string service = 1;
+  string version = 2;
+  bool ready = 3;
+}
+
+message RetrievalRoute {
+  string route_id = 1;
+  string query = 2;
+  SourceScope source_scope = 3;
+  Modality modality = 4;
+  uint32 top_k = 5;
+  uint32 timeout_ms = 6;
+}
+
+message ExecutePlanRequest {
+  string request_id = 1;
+  string user_id = 2;
+  string conversation_id = 3;
+  repeated RetrievalRoute routes = 4;
+  repeated string allowed_acl_ids = 5;
+}
+
+message Evidence {
+  string evidence_id = 1;
+  string content = 2;
+  Modality modality = 3;
+  SourceScope source_scope = 4;
+  string title = 5;
+  string source = 6;
+  string url = 7;
+  int64 published_at_unix_ms = 8;
+  int64 retrieved_at_unix_ms = 9;
+  double score = 10;
+  map<string, string> metadata = 11;
+}
+
+message Conflict {
+  repeated string evidence_ids = 1;
+  string type = 2;
+  string reason = 3;
+}
+
+message Citation {
+  uint32 citation_id = 1;
+  string evidence_id = 2;
+  string source = 3;
+  string url = 4;
+}
+
+message RouteError {
+  string route_id = 1;
+  string code = 2;
+  string message = 3;
+  bool retryable = 4;
+}
+
+message ExecutePlanResponse {
+  string request_id = 1;
+  repeated Evidence evidence = 2;
+  repeated Conflict conflicts = 3;
+  string context = 4;
+  repeated Citation citations = 5;
+  repeated RouteError route_errors = 6;
+  bool partial_failure = 7;
+}
+
+message NormalizedUnit {
+  string unit_id = 1;
+  Modality modality = 2;
+  string content = 3;
+  string title = 4;
+  int64 start_time_ms = 5;
+  int64 end_time_ms = 6;
+  repeated float dense_embedding = 7;
+  string embedding_model_id = 8;
+  string embedding_model_version = 9;
+  map<string, string> metadata = 10;
+}
+
+message IndexAssetRequest {
+  string request_id = 1;
+  string asset_id = 2;
+  uint64 asset_version = 3;
+  string object_key = 4;
+  repeated NormalizedUnit units = 5;
+}
+
+message IndexAssetResponse {
+  string request_id = 1;
+  string asset_id = 2;
+  uint64 asset_version = 3;
+  uint32 indexed_unit_count = 4;
+  string collection_alias = 5;
+}

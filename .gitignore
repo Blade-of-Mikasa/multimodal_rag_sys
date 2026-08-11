@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# C++ / CMake / Conan
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+CTestTestfile.cmake
+Makefile
+cmake_install.cmake
+compile_commands.json
+conan.lock
+conanbuildinfo.*
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,25 @@
+add_library(rag_core_domain
+    src/domain.cpp
+)
+
+target_include_directories(rag_core_domain
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(rag_core_domain PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(rag_core_domain PRIVATE /W4 /WX)
+else()
+    target_compile_options(rag_core_domain PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+add_executable(rag_core_domain_test
+    tests/domain_test.cpp
+)
+
+target_link_libraries(rag_core_domain_test PRIVATE rag_core_domain)
+target_compile_features(rag_core_domain_test PRIVATE cxx_std_20)
+
+add_test(NAME rag_core_domain_test COMMAND rag_core_domain_test)
