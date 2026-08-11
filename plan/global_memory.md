@@ -28,7 +28,7 @@
 | ID | 模块 | 状态 | 完成标准 |
 |---|---|---|---|
 | M00 | 工程骨架与跨语言契约 | 已完成 | Python/C++ 目录、v1 Proto 契约、双端领域模型与基础验证通过 |
-| M01 | 依赖与代码生成基线 | 待开始 | Python 环境、CMake/Conan、Protobuf/gRPC 双端代码生成可复现 |
+| M01 | 依赖与代码生成基线 | 已完成 | Python 环境、CMake/Conan、Protobuf/gRPC 双端代码生成可复现 |
 | M02 | Python API 基础服务 | 待开始 | 配置、健康检查、request_id、错误模型和流式响应骨架可运行 |
 | M03 | C++ Core gRPC 基础服务 | 待开始 | Health 与 ExecutePlan 空实现可由 Python 调通 |
 | M04 | MySQL 元数据与迁移 | 待开始 | 资产、版本、任务、会话、权限基础表与迁移完成 |
@@ -44,13 +44,15 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M00 已完成；下一模块为 M01 依赖与代码生成基线。
+- 当前模块：M01 已完成；下一模块为 M02 Python API 基础服务。
 - 当前远程：`origin/main`。
-- 当前环境限制：本机尚未安装 CMake、Conan、`protoc` 和 gRPC 代码生成插件；M00 使用系统 C++20 编译器和 Python 标准库完成基础验证，依赖安装与正式代码生成归入 M01。
-- 最近验证：`./scripts/verify_foundation.sh`；Python 6 项测试通过，C++20 领域模型测试通过。
-- 下一步：推进 M01，建立锁定版本的 Python/C++ 依赖与 Proto 代码生成流程。
+- 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
+- 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
+- 最近验证：`./scripts/verify_codegen.sh`；Python 6 项基础测试、C++ 领域测试、Python/C++ 生成代码契约测试全部通过，CTest 2/2 通过。
+- 下一步：推进 M02，实现配置、健康检查、`request_id`、统一错误模型和流式响应骨架。
 
 ## 5. 更新日志
 
 - 2026-08-11：创建全局记忆，冻结 Python 表层 / C++20 内核边界，建立 M00-M13 模块清单；开始 M00。
 - 2026-08-11：完成 M00。新增 v1 Protobuf 服务契约、Python/C++ 领域模型、CMake 骨架和无第三方依赖的基础验证脚本；验证全部通过。
+- 2026-08-11：完成 M01。锁定 Python 与 Conan/C++ 依赖，新增一键依赖初始化、Python/C++ Protobuf/gRPC 代码生成及双端生成契约测试；完整验证通过。

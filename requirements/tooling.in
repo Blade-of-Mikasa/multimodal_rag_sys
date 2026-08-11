@@ -1,0 +1,7 @@
+# Direct development-tool pins. The fully resolved environment is recorded in
+# tooling.lock and is what bootstrap_dependencies.sh installs.
+conan==2.31.2
+grpcio==1.83.0
+grpcio-tools==1.82.1
+protobuf==7.35.1
+setuptools==84.0.0

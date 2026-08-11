@@ -6,7 +6,7 @@
 
 项目按模块迭代，长期决策与进度记录在 [`plan/global_memory.md`](plan/global_memory.md)。
 
-当前已开始建设工程骨架与跨语言契约：
+当前已完成工程骨架、跨语言契约，以及可复现的依赖与代码生成基线：
 
 ```text
 React
@@ -16,12 +16,32 @@ React
   → Milvus / MySQL / Redis / S3 / Kafka
 ```
 
-## 基础验证
+## 初始化开发环境
 
-M00 不要求本机预装 CMake、Conan 或 protoc，可以直接运行：
+需要 Python 3.11+ 和支持 C++20 的编译器。脚本会创建 `.venv`，安装锁定的 Python 工具链，并通过 Conan 安装锁定的 CMake、gRPC/Protobuf 及其 C++ 依赖：
+
+```bash
+./scripts/bootstrap_dependencies.sh
+```
+
+如果兼容的 Python 不在默认命令中，可显式指定：
+
+```bash
+RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
+```
+
+首次执行可能需要从源码编译 C++ 依赖，后续会复用仓库 `build/conan-home` 下的本地缓存。
+
+## 验证
+
+完整验证会重新生成 Python 与 C++ 的 Protobuf/gRPC 代码，编译全部 C++ 测试，并运行双端契约检查：
+
+```bash
+./scripts/verify_codegen.sh
+```
+
+生成物只保留在 `build/generated/python` 和 `build/cpp/generated/cpp`，不提交到仓库。若只需运行不依赖第三方组件的 M00 快速验证：
 
 ```bash
 ./scripts/verify_foundation.sh
 ```
-
-该脚本会执行 Python 领域模型与 Proto 契约测试，并使用系统 C++20 编译器构建和运行 C++ 领域模型测试。

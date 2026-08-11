@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 .venv/
+.conan2/
+CMakeUserPresets.json
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -15,7 +18,6 @@ CTestTestfile.cmake
 Makefile
 cmake_install.cmake
 compile_commands.json
-conan.lock
 conanbuildinfo.*
 
 # Editors and operating systems
