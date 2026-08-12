@@ -2,17 +2,23 @@
 # file only after validating the HTTP service and streaming contract.
 annotated-doc==0.0.5
 annotated-types==0.8.0
+alembic==1.19.1
 anyio==4.14.2
+asyncmy==0.2.13
 click==8.4.2
 fastapi==0.141.1
+greenlet==3.5.5
 h11==0.16.0
 httpcore2==2.10.0
 httpx2==2.10.0
 idna==3.18
+Mako==1.4.1
+MarkupSafe==3.0.3
 pydantic==2.13.4
 pydantic_core==2.46.4
 pydantic-settings==2.15.0
 python-dotenv==1.2.2
+SQLAlchemy==2.0.52
 starlette==1.6.0
 truststore==0.10.4
 typing_extensions==4.16.0

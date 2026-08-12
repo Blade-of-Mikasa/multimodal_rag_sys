@@ -8,11 +8,14 @@ version = "0.1.0"
 description = "Python surface layer for the multimodal RAG system"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic==1.19.1",
+    "asyncmy==0.2.13",
     "fastapi==0.141.1",
     "grpcio==1.83.0",
     "pydantic==2.13.4",
     "pydantic-settings==2.15.0",
     "protobuf==7.35.1",
+    "SQLAlchemy[asyncio]==2.0.52",
     "uvicorn==0.52.1",
 ]
 

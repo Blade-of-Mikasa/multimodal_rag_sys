@@ -6,7 +6,8 @@
 
 项目按模块迭代，长期决策与进度记录在 [`plan/global_memory.md`](plan/global_memory.md)。
 
-当前已完成工程骨架、跨语言契约、可复现的依赖与代码生成基线，并提供可连通的 Python API 与 C++ Core 基础服务：
+当前已完成工程骨架、跨语言契约、可复现的依赖与代码生成基线，提供可连通的
+Python API 与 C++ Core 基础服务，并建立 MySQL 元数据及版本化迁移：
 
 ```text
 React
@@ -15,6 +16,9 @@ React
   → C++20 RAG & Index Core
   → Milvus / MySQL / Redis / S3 / Kafka
 ```
+
+MySQL 元数据表、事务边界和迁移方式见
+[`docs/mysql_metadata.md`](docs/mysql_metadata.md)。
 
 ## 初始化开发环境
 
@@ -33,6 +37,13 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 首次执行可能需要从源码编译 C++ 依赖，后续会复用仓库 `build/conan-home` 下的本地缓存。
 
 ## 验证
+
+验证 MySQL 资产、版本、任务、会话和 ACL 模型，并使用 MySQL 方言离线编译
+Alembic 的升级与回退迁移：
+
+```bash
+./scripts/verify_mysql_metadata.sh
+```
 
 M03 完整验证会编译并启动 C++ Core，使用 Python 调用 `Health` 与 `ExecutePlan`，并验证 HTTP 就绪检查：
 
@@ -83,6 +94,6 @@ PYTHONPATH="${PWD}/build/generated/python" \
 | `GET /health/ready` | 流量就绪检查；实时探测 C++ Core，不可用时返回 503 |
 | `POST /api/v1/queries/stream` | SSE 流式协议骨架；当前明确返回 `pipeline_not_connected` |
 
-所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、`RAG_DEBUG`、`RAG_CORE_GRPC_TARGET` 和 `RAG_CORE_GRPC_TIMEOUT_SECONDS` 等环境变量覆盖默认配置。
+所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、`RAG_DEBUG`、`RAG_CORE_GRPC_TARGET`、`RAG_CORE_GRPC_TIMEOUT_SECONDS` 和 `RAG_MYSQL_DSN` 等环境变量覆盖默认配置。
 
 当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，用于本地开发与服务骨架验证；生产部署必须配合受控服务网络或补充 TLS。
