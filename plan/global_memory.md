@@ -11,6 +11,7 @@
 - 模型：应用只依赖 `ChatModel`、`EmbeddingModel`、`VisionModel`、`SpeechToTextModel` 内部接口，供应商实现可替换。
 - 数据组件：Milvus、MySQL、Redis、S3 协议对象存储、Kafka。
 - MySQL 基线：MySQL 8.0+、InnoDB、utf8mb4；Python 使用 SQLAlchemy 2.0 + asyncmy，数据库版本只通过 Alembic 迁移。
+- 对象存储基线：应用依赖自有 `ObjectStore` 接口，默认适配 S3 SigV4；直传必须签入大小、类型、SHA-256、资产标识和条件写入，完成回调只信任服务端 `HeadObject` 结果。
 - 本地文本检索：Milvus dense vector + BM25，不在 MVP 额外部署 Elasticsearch。
 - 联网检索：统一 `SearchProvider` 接口；传统 Bing Search API 已退役，不作为可直接调用的默认实现。
 - 原始文件只进入对象存储；Kafka 消息只传 `asset_id`、`version`、`object_key` 等任务元数据。
@@ -33,8 +34,8 @@
 | M01 | 依赖与代码生成基线 | 已完成 | Python 环境、CMake/Conan、Protobuf/gRPC 双端代码生成可复现 |
 | M02 | Python API 基础服务 | 已完成 | 配置、健康检查、request_id、错误模型和流式响应骨架可运行 |
 | M03 | C++ Core gRPC 基础服务 | 已完成 | Health 与 ExecutePlan 空实现可由 Python 调通 |
-| M04 | MySQL 元数据与迁移 | Review 中 | 资产、版本、任务、会话、权限基础表与迁移完成 |
-| M05 | 对象存储与上传链路 | 待开始 | 预签名上传、资产登记、文件校验完成 |
+| M04 | MySQL 元数据与迁移 | 已完成 | 资产、版本、任务、会话、权限基础表与迁移完成 |
+| M05 | 对象存储与上传链路 | Review 中 | 预签名上传、资产登记、文件校验完成 |
 | M06 | Kafka 入库任务链路 | 待开始 | ingest/retry/DLQ、幂等消费与状态流转完成 |
 | M07 | 文档入库与 Milvus 检索 | 待开始 | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
 | M08 | 图片入库与召回 | 待开始 | Caption、OCR、向量化与图片证据返回完成 |
@@ -46,15 +47,16 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M04 开发与验证已完成，[PR #3](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/3) Review 中；合并后进入 M05 对象存储与上传链路。
-- 当前分支：`codex/m04-mysql-metadata-migrations`，目标分支为 `origin/main`。
+- 当前模块：M05 开发与验证已完成，[PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) Review 中；合并后进入 M06 Kafka 入库任务链路。
+- 当前分支：`codex/m05-object-storage-upload`，目标分支为 `origin/main`。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
+- 上传基线：前端通过短期预签名 URL 直传对象存储；Python 两阶段 API 负责资产登记、服务端对象校验，以及在同一 MySQL 事务中更新处理状态并创建唯一入库任务。当前单次 PUT 上限 5 GB。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：`./scripts/verify_mysql_metadata.sh` 与 `./scripts/verify_foundation.sh`；数据库专项 8/8、API 回归 17/17、MySQL 方言升降级 SQL 和 Python/C++ 基础回归均通过。开发机无 MySQL 服务，在线迁移尚未执行。
-- 下一步：等待 M04 PR Review；合并时将 M04 状态更新为“已完成”，之后推进 M05。
+- 最近验证：`./scripts/verify_object_storage.sh` 与 `./scripts/verify_foundation.sh`；48 项 Python 测试中 45 项通过、3 项需运行中 C++ Core 而跳过，真实 aiobotocore SigV4 签名及 Python/C++ 基础回归通过。开发机未配置 MySQL/S3，在线端到端上传尚未执行。
+- 下一步：等待 M05 PR Review；合并时将 M05 状态更新为“已完成”，之后推进 M06。
 
 ## 5. 更新日志
 
@@ -66,3 +68,5 @@
 - 2026-08-12：M03 开发完成，[PR #2](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/2) Review 中。新增 C++ Core gRPC 服务进程、`Health` 与空结果 `ExecutePlan` 实现、Python 异步 Core 客户端、真实 Core 就绪检查和进程级集成测试；完整验证通过。
 - 2026-08-12：M03 通过 [PR #2](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/2) 合并，状态更新为已完成。
 - 2026-08-12：M04 开发完成，[PR #3](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/3) Review 中。新增 7 张 MySQL 8.0 基础表、异步 SQLAlchemy 会话、首版 Alembic 升降级迁移和专项验证；离线 MySQL 方言及全量基础回归通过。
+- 2026-08-12：M04 通过 [PR #3](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/3) 合并，状态更新为已完成。
+- 2026-08-12：M05 开发完成，[PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) Review 中。新增 S3 兼容异步适配、两阶段直传 API、服务端 SHA-256/大小/类型校验、条件写入保护，以及事务化幂等任务登记；专项与基础回归通过。
