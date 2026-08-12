@@ -36,6 +36,8 @@ fi
 "${venv_dir}/bin/python" -m pip install \
   --requirement "${repository_root}/requirements/tooling.lock"
 "${venv_dir}/bin/python" -m pip install \
+  --requirement "${repository_root}/requirements/api.lock"
+"${venv_dir}/bin/python" -m pip install \
   --no-build-isolation \
   --no-deps \
   --editable "${repository_root}"

@@ -6,7 +6,7 @@
 
 项目按模块迭代，长期决策与进度记录在 [`plan/global_memory.md`](plan/global_memory.md)。
 
-当前已完成工程骨架、跨语言契约，以及可复现的依赖与代码生成基线：
+当前已完成工程骨架、跨语言契约、可复现的依赖与代码生成基线，并提供可运行的 Python API 基础服务：
 
 ```text
 React
@@ -34,6 +34,12 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 
 ## 验证
 
+验证 Python API 的配置、健康检查、请求 ID、统一错误响应和 SSE 流式协议：
+
+```bash
+./scripts/verify_python_api.sh
+```
+
 完整验证会重新生成 Python 与 C++ 的 Protobuf/gRPC 代码，编译全部 C++ 测试，并运行双端契约检查：
 
 ```bash
@@ -45,3 +51,20 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 ```bash
 ./scripts/verify_foundation.sh
 ```
+
+## 运行 Python API
+
+```bash
+.venv/bin/uvicorn rag_api.main:app \
+  --app-dir services/python_api/src \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+| 接口 | 用途 |
+|---|---|
+| `GET /health/live` | 进程存活检查 |
+| `GET /health/ready` | 流量就绪检查；M03 将加入 C++ Core 连通性 |
+| `POST /api/v1/queries/stream` | SSE 流式协议骨架；当前明确返回 `pipeline_not_connected` |
+
+所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、`RAG_DEBUG` 等环境变量覆盖默认配置。

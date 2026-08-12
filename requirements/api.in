@@ -1,0 +1,7 @@
+# Direct runtime and API-test pins. The resolved environment is recorded in
+# api.lock and is what bootstrap_dependencies.sh installs.
+fastapi==0.141.1
+httpx2==2.10.0
+pydantic==2.13.4
+pydantic-settings==2.15.0
+uvicorn==0.52.1
