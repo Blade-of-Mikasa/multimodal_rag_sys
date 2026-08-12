@@ -19,6 +19,8 @@ React
 
 MySQL 元数据表、事务边界和迁移方式见
 [`docs/mysql_metadata.md`](docs/mysql_metadata.md)。
+对象存储直传、完整性校验和资产登记流程见
+[`docs/object_storage_upload.md`](docs/object_storage_upload.md)。
 
 ## 初始化开发环境
 
@@ -37,6 +39,12 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 首次执行可能需要从源码编译 C++ 依赖，后续会复用仓库 `build/conan-home` 下的本地缓存。
 
 ## 验证
+
+验证 S3 预签名、对象完整性检查、上传 API 和幂等任务登记：
+
+```bash
+./scripts/verify_object_storage.sh
+```
 
 验证 MySQL 资产、版本、任务、会话和 ACL 模型，并使用 MySQL 方言离线编译
 Alembic 的升级与回退迁移：
@@ -92,8 +100,12 @@ PYTHONPATH="${PWD}/build/generated/python" \
 |---|---|
 | `GET /health/live` | 进程存活检查 |
 | `GET /health/ready` | 流量就绪检查；实时探测 C++ Core，不可用时返回 503 |
+| `POST /api/v1/assets/uploads` | 登记资产并创建受大小、类型、SHA-256 约束的预签名 PUT |
+| `POST /api/v1/assets/{asset_id}/versions/{version}/complete` | 校验对象并幂等创建入库任务 |
 | `POST /api/v1/queries/stream` | SSE 流式协议骨架；当前明确返回 `pipeline_not_connected` |
 
-所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、`RAG_DEBUG`、`RAG_CORE_GRPC_TARGET`、`RAG_CORE_GRPC_TIMEOUT_SECONDS` 和 `RAG_MYSQL_DSN` 等环境变量覆盖默认配置。
+所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、
+`RAG_DEBUG`、`RAG_CORE_GRPC_TARGET`、`RAG_CORE_GRPC_TIMEOUT_SECONDS`、
+`RAG_MYSQL_DSN` 和 `RAG_OBJECT_STORAGE_*` 等环境变量覆盖默认配置。
 
 当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，用于本地开发与服务骨架验证；生产部署必须配合受控服务网络或补充 TLS。
