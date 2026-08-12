@@ -37,6 +37,25 @@ class SettingsTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Settings(core_grpc_timeout_seconds=31, _env_file=None)
 
+    def test_mysql_dsn_requires_asyncmy_and_is_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(mysql_dsn="mysql+pymysql://rag:secret@db/rag", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(mysql_dsn="mysql+asyncmy://rag:secret@db", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(mysql_dsn="not a database url", _env_file=None)
+
+        settings = Settings(
+            mysql_dsn="mysql+asyncmy://rag:secret@db/rag",
+            _env_file=None,
+        )
+
+        self.assertNotIn("secret", repr(settings))
+        self.assertEqual(
+            "mysql+asyncmy://rag:secret@db/rag",
+            settings.mysql_dsn.get_secret_value(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
