@@ -29,6 +29,14 @@ class SettingsTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Settings(api_prefix="/", _env_file=None)
 
+    def test_core_settings_must_be_usable(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(core_grpc_target="  ", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(core_grpc_timeout_seconds=0.01, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(core_grpc_timeout_seconds=31, _env_file=None)
+
 
 if __name__ == "__main__":
     unittest.main()
