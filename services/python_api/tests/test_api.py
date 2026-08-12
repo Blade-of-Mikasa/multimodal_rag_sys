@@ -8,6 +8,28 @@ from fastapi.testclient import TestClient
 
 from rag_api.app import create_app
 from rag_api.config import Settings
+from rag_api.core_client import CoreHealth, CoreUnavailableError
+
+
+class FakeCoreClient:
+    def __init__(self, *, ready: bool = True, unavailable: bool = False) -> None:
+        self.ready = ready
+        self.unavailable = unavailable
+
+    async def health(self) -> CoreHealth:
+        if self.unavailable:
+            raise CoreUnavailableError("core unavailable in test")
+        return CoreHealth(
+            service="multimodal-rag-core",
+            version="0.1.0",
+            ready=self.ready,
+        )
+
+    async def execute_plan(self, plan):
+        raise NotImplementedError
+
+    async def close(self) -> None:
+        pass
 
 
 class PythonApiTest(unittest.TestCase):
@@ -17,7 +39,7 @@ class PythonApiTest(unittest.TestCase):
             api_prefix="/api/v1",
             _env_file=None,
         )
-        self.client = TestClient(create_app(settings))
+        self.client = TestClient(create_app(settings, FakeCoreClient()))
 
     def tearDown(self) -> None:
         self.client.close()
@@ -36,8 +58,32 @@ class PythonApiTest(unittest.TestCase):
         response = self.client.get("/health/ready")
 
         self.assertEqual(200, response.status_code)
-        self.assertEqual({"python_api": "ok"}, response.json()["checks"])
+        self.assertEqual(
+            {"python_api": "ok", "rag_core": "ok"},
+            response.json()["checks"],
+        )
         self.assertEqual("test", response.json()["environment"])
+
+    def test_readiness_returns_503_when_core_is_unavailable(self) -> None:
+        settings = Settings(environment="test", _env_file=None)
+        with TestClient(
+            create_app(settings, FakeCoreClient(unavailable=True))
+        ) as client:
+            response = client.get(
+                "/health/ready",
+                headers={"X-Request-ID": "core-unavailable-request"},
+            )
+
+        self.assertEqual(503, response.status_code)
+        self.assertFalse(response.json()["ready"])
+        self.assertEqual("degraded", response.json()["status"])
+        self.assertEqual(
+            {"python_api": "ok", "rag_core": "unavailable"},
+            response.json()["checks"],
+        )
+        self.assertEqual(
+            "core-unavailable-request", response.headers["X-Request-ID"]
+        )
 
     def test_malformed_request_id_is_replaced(self) -> None:
         response = self.client.get(

@@ -6,7 +6,7 @@
 
 项目按模块迭代，长期决策与进度记录在 [`plan/global_memory.md`](plan/global_memory.md)。
 
-当前已完成工程骨架、跨语言契约、可复现的依赖与代码生成基线，并提供可运行的 Python API 基础服务：
+当前已完成工程骨架、跨语言契约、可复现的依赖与代码生成基线，并提供可连通的 Python API 与 C++ Core 基础服务：
 
 ```text
 React
@@ -34,6 +34,12 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 
 ## 验证
 
+M03 完整验证会编译并启动 C++ Core，使用 Python 调用 `Health` 与 `ExecutePlan`，并验证 HTTP 就绪检查：
+
+```bash
+./scripts/verify_core_service.sh
+```
+
 验证 Python API 的配置、健康检查、请求 ID、统一错误响应和 SSE 流式协议：
 
 ```bash
@@ -52,10 +58,20 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 ./scripts/verify_foundation.sh
 ```
 
-## 运行 Python API
+## 运行 Python API 与 C++ Core
+
+先生成契约并编译 C++ 服务：
 
 ```bash
-.venv/bin/uvicorn rag_api.main:app \
+./scripts/generate_proto.sh
+./build/cpp/core/grpc/rag_core_server --listen 127.0.0.1:50051
+```
+
+在另一个终端启动 Python API。Python 客户端需要能找到生成在 `build/generated/python` 下的 gRPC 模块：
+
+```bash
+PYTHONPATH="${PWD}/build/generated/python" \
+  .venv/bin/uvicorn rag_api.main:app \
   --app-dir services/python_api/src \
   --host 127.0.0.1 \
   --port 8000
@@ -64,7 +80,9 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 | 接口 | 用途 |
 |---|---|
 | `GET /health/live` | 进程存活检查 |
-| `GET /health/ready` | 流量就绪检查；M03 将加入 C++ Core 连通性 |
+| `GET /health/ready` | 流量就绪检查；实时探测 C++ Core，不可用时返回 503 |
 | `POST /api/v1/queries/stream` | SSE 流式协议骨架；当前明确返回 `pipeline_not_connected` |
 
-所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、`RAG_DEBUG` 等环境变量覆盖默认配置。
+所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、`RAG_DEBUG`、`RAG_CORE_GRPC_TARGET` 和 `RAG_CORE_GRPC_TIMEOUT_SECONDS` 等环境变量覆盖默认配置。
+
+当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，用于本地开发与服务骨架验证；生产部署必须配合受控服务网络或补充 TLS。

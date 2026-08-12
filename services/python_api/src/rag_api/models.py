@@ -15,10 +15,12 @@ class HealthResponse(ApiModel):
     service: str
     version: str
     environment: str
-    status: Literal["ok"] = "ok"
+    status: Literal["ok", "degraded"] = "ok"
     ready: bool
     request_id: str
-    checks: dict[str, Literal["ok"]] = Field(default_factory=dict)
+    checks: dict[str, Literal["ok", "unavailable"]] = Field(
+        default_factory=dict
+    )
 
 
 class StreamQueryRequest(ApiModel):

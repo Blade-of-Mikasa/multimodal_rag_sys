@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     environment: Environment = "local"
     api_prefix: str = "/api/v1"
     debug: bool = False
+    core_grpc_target: str = "127.0.0.1:50051"
+    core_grpc_timeout_seconds: float = 1.0
 
     @field_validator("api_prefix")
     @classmethod
@@ -36,4 +38,20 @@ class Settings(BaseSettings):
             raise ValueError("api_prefix must start with '/'")
         if value == "/" or value.endswith("/"):
             raise ValueError("api_prefix must not end with '/'")
+        return value
+
+    @field_validator("core_grpc_target")
+    @classmethod
+    def validate_core_grpc_target(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("core_grpc_target must not be empty")
+        return value
+
+    @field_validator("core_grpc_timeout_seconds")
+    @classmethod
+    def validate_core_grpc_timeout(cls, value: float) -> float:
+        if not 0.05 <= value <= 30:
+            raise ValueError(
+                "core_grpc_timeout_seconds must be between 0.05 and 30"
+            )
         return value
