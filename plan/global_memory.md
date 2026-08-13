@@ -54,7 +54,7 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M07 开发与验证已完成，PR 待创建。因 [PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6) 尚未合入 `main`，M07 暂时堆叠在完整的 M06 分支上。
+- 当前模块：M07 开发与验证已完成，[PR #7](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/7) Review 中。因 [PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6) 尚未合入 `main`，M07 暂时堆叠在完整的 M06 分支上。
 - 当前分支：`codex/m07-document-milvus-retrieval`，目标分支为 `codex/m06-kafka-ingestion`；PR #6 合并后应把 M07 PR base 切回 `main`。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
@@ -94,7 +94,7 @@
 - 2026-08-12：M05 开发完成，[PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) Review 中。新增 S3 兼容异步适配、两阶段直传 API、服务端 SHA-256/大小/类型校验、条件写入保护，以及事务化幂等任务登记；专项与基础回归通过。
 - 2026-08-13：M06 开发完成，[PR #5](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/5) Review 中。新增版本化 Kafka 契约、MySQL transactional outbox、幂等生产与手动提交消费、处理租约 heartbeat、有界重试及 poison/终态 DLQ；71 项 Python 测试与基础回归通过。PR 暂时堆叠在尚未合并的 PR #4 上。
 - 2026-08-13：M05 通过 [PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) 合并，状态更新为已完成。因堆叠 PR #5 随后只合入旧 M05 分支，新增 [PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6) 将同一批 M06 内容补入 `main`。
-- 2026-08-13：M07 开发完成，PR 待创建。新增文档 worker、有界对象下载、
+- 2026-08-13：M07 开发完成，[PR #7](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/7) Review 中。新增文档 worker、有界对象下载、
   PDF/TXT/Markdown 解析、稳定切片、通用 Embedding HTTP 适配、按字节分批的
   IndexAsset gRPC 协议，以及 C++ 内存/Milvus `DocumentStore`；实现 HNSW dense、
   服务端 BM25、RRF、tenant/ACL 过滤与模型版本化 collection。完整 Python、
