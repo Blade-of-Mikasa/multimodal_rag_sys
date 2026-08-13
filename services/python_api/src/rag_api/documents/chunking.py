@@ -6,6 +6,7 @@ from hashlib import sha256
 from uuid import UUID, uuid5
 
 from rag_api.documents.domain import DocumentChunk, ParsedBlock
+from rag_api.ingestion.domain import truncate_utf8
 
 
 CHUNK_ID_NAMESPACE = UUID("21076b8e-52f2-4f29-b106-55ab218e0c19")
@@ -56,7 +57,7 @@ class DocumentChunker:
                             chunk_id=chunk_id,
                             ordinal=ordinal,
                             page_number=block.page_number,
-                            title=block.title[:2048],
+                            title=truncate_utf8(block.title, 2_048),
                             content=content,
                             content_sha256=digest,
                         )

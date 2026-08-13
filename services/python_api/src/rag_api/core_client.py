@@ -10,7 +10,7 @@ from typing import Protocol
 
 import grpc
 
-from .domain import ExecutionPlan
+from .domain import ExecutionPlan, Modality
 
 
 class CoreUnavailableError(RuntimeError):
@@ -36,6 +36,7 @@ class CorePlanResult:
 @dataclass(frozen=True, slots=True)
 class IndexUnit:
     unit_id: str
+    modality: Modality
     content: str
     title: str
     ordinal: int
@@ -44,6 +45,7 @@ class IndexUnit:
     dense_embedding: tuple[float, ...]
     embedding_model_id: str
     embedding_model_version: str
+    metadata: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +198,7 @@ class GrpcCoreClient:
         unit_messages = tuple(
             self._messages.NormalizedUnit(
                 unit_id=unit.unit_id,
-                modality=self._messages.MODALITY_DOCUMENT,
+                modality=int(unit.modality),
                 content=unit.content,
                 title=unit.title,
                 ordinal=unit.ordinal,
@@ -205,6 +207,7 @@ class GrpcCoreClient:
                 dense_embedding=unit.dense_embedding,
                 embedding_model_id=unit.embedding_model_id,
                 embedding_model_version=unit.embedding_model_version,
+                metadata=dict(unit.metadata),
             )
             for unit in command.units
         )
@@ -320,12 +323,20 @@ class GrpcCoreClient:
         ):
             raise ValueError("index asset identity and units must not be empty")
         first = command.units[0]
+        if first.modality not in {Modality.DOCUMENT, Modality.IMAGE}:
+            raise ValueError("index unit modality must be document or image")
+        if first.modality is Modality.IMAGE and len(command.units) != 1:
+            raise ValueError("one image asset version must contain exactly one unit")
         unit_ids: set[str] = set()
         ordinals: set[int] = set()
         for unit in command.units:
             if (
                 not unit.unit_id
                 or not unit.content
+                or len(unit.content.encode("utf-8")) > 65_535
+                or len(unit.title.encode("utf-8")) > 2_048
+                or unit.ordinal < 0
+                or unit.page_number < 0
                 or len(unit.content_sha256) != 64
                 or not unit.dense_embedding
                 or any(not isfinite(value) for value in unit.dense_embedding)
@@ -334,11 +345,43 @@ class GrpcCoreClient:
             ):
                 raise ValueError("index unit content and embedding must be valid")
             if (
-                unit.embedding_model_id != first.embedding_model_id
+                unit.modality != first.modality
+                or unit.embedding_model_id != first.embedding_model_id
                 or unit.embedding_model_version != first.embedding_model_version
                 or len(unit.dense_embedding) != len(first.dense_embedding)
             ):
-                raise ValueError("index units must share one embedding model schema")
+                raise ValueError(
+                    "index units must share one modality and embedding model schema"
+                )
+            metadata_keys: set[str] = set()
+            metadata_values: dict[str, str] = {}
+            for key, value in unit.metadata:
+                if (
+                    not key
+                    or len(key.encode("utf-8")) > 128
+                    or len(value.encode("utf-8")) > 60_000
+                    or key in metadata_keys
+                ):
+                    raise ValueError("index unit metadata must be unique and bounded")
+                metadata_keys.add(key)
+                metadata_values[key] = value
+            if unit.modality is Modality.IMAGE:
+                width = metadata_values.get("width", "")
+                height = metadata_values.get("height", "")
+                if (
+                    not unit.title
+                    or metadata_values.get("media_type")
+                    not in {"image/jpeg", "image/png", "image/webp"}
+                    or not width.isascii()
+                    or not width.isdecimal()
+                    or not height.isascii()
+                    or not height.isdecimal()
+                    or not 1 <= int(width) <= 4_294_967_295
+                    or not 1 <= int(height) <= 4_294_967_295
+                    or not metadata_values.get("vision_model_id")
+                    or not metadata_values.get("vision_model_version")
+                ):
+                    raise ValueError("image index metadata and caption must be valid")
             if unit.unit_id in unit_ids or unit.ordinal in ordinals:
                 raise ValueError("index unit IDs and ordinals must be unique")
             unit_ids.add(unit.unit_id)

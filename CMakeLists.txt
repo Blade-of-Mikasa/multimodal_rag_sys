@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(RAG_ENABLE_GRPC "Build the generated Protobuf/gRPC contract" OFF)
-option(RAG_ENABLE_MILVUS "Build the Milvus-backed document store" OFF)
+option(RAG_ENABLE_MILVUS "Build the Milvus-backed retrieval stores" OFF)
 
 if(RAG_ENABLE_MILVUS AND NOT RAG_ENABLE_GRPC)
     message(FATAL_ERROR "RAG_ENABLE_MILVUS requires RAG_ENABLE_GRPC=ON")

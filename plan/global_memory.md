@@ -16,6 +16,12 @@
 - 文档索引：Python 负责有界下载、PDF/TXT/Markdown 解析、稳定切片和通用
   Embedding API；C++ `DocumentStore` 负责 Milvus collection、批量 upsert、
   HNSW/COSINE + BM25 双路召回、RRF 融合，以及 tenant/ACL 参数化过滤。
+- 图片索引：Python 使用 Pillow 对 JPEG/PNG/WebP 做签名校验、像素预算、EXIF
+  纠正、缩放和无元数据重编码；通用 Vision API 生成 Caption/OCR，再由与查询相同
+  的文本 Embedding API 生成图片向量。C++ `ImageStore` 使用独立
+  `rag_image_v1_*` collection 做 dense+BM25+RRF 检索并返回图片 Evidence。
+- 文档与图片处理器必须在同一个 Kafka consumer group 进程内按媒体类型路由；禁止
+  部署多个“只认识一种媒体”的竞争消费者，以免 Kafka 随机把消息分给错误处理器。
 - Embedding 模型 ID、版本和维度共同定义 collection 边界；模型升级新建 collection
   并回灌切流，禁止把不同语义空间的向量混入同一集合。
 - 联网检索：统一 `SearchProvider` 接口；传统 Bing Search API 已退役，不作为可直接调用的默认实现。
@@ -44,8 +50,8 @@
 | M04 | MySQL 元数据与迁移 | 已完成 | 资产、版本、任务、会话、权限基础表与迁移完成 |
 | M05 | 对象存储与上传链路 | 已完成 | 预签名上传、资产登记、文件校验完成 |
 | M06 | Kafka 入库任务链路 | Review 中 | ingest/retry/DLQ、幂等消费与状态流转完成 |
-| M07 | 文档入库与 Milvus 检索 | Review 中 | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
-| M08 | 图片入库与召回 | 待开始 | Caption、OCR、向量化与图片证据返回完成 |
+| M07 | 文档入库与 Milvus 检索 | 已完成（随 PR #7 合入 M06 分支） | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
+| M08 | 图片入库与召回 | 开发完成，待创建 PR | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | 待开始 | ASR、场景切分、关键帧与时间片段召回完成 |
 | M10 | 联网搜索与网页抽取 | 待开始 | SearchProvider、正文抽取、来源时间与失败降级完成 |
 | M11 | 证据治理与上下文构建 | 待开始 | 去重、冲突规则、Token 预算与 citation 映射完成 |
@@ -54,8 +60,12 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M07 开发与验证已完成，[PR #7](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/7) Review 中。因 [PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6) 尚未合入 `main`，M07 暂时堆叠在完整的 M06 分支上。
-- 当前分支：`codex/m07-document-milvus-retrieval`，目标分支为 `codex/m06-kafka-ingestion`；PR #6 合并后应把 M07 PR base 切回 `main`。
+- 当前模块：M08 图片入库与召回开发、文档和验证已完成，待推送并创建中文 PR。
+  [PR #7](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/7) 已合入
+  `codex/m06-kafka-ingestion`；[PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6)
+  仍是 M06+M07 进入 `main` 的集成路径。
+- 当前分支：`codex/m08-image-ingestion-retrieval`，目标分支为
+  `codex/m06-kafka-ingestion`；PR #6 合并后应把 M08 PR base 切回 `main`。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
@@ -69,16 +79,24 @@
 - 文档检索基线：Milvus C++ SDK 固定 v2.6.6 精确 commit；每个模型 ID/版本/维度
   使用独立 collection，dense HNSW/COSINE 与服务端 BM25 sparse 候选通过 RRF
   融合，两路均强制 tenant/ACL filter。默认 ICU analyzer 适配中英混合文本。
+- 图片入库基线：统一 `rag-ingest-worker` 有界下载并复核图片大小/SHA-256；Pillow
+  12.3.0 只解码 JPEG/PNG/WebP 静态图，限制 20 MB/2500 万像素，应用 EXIF
+  orientation 后最长边缩至 4096 并重编码。通用 Responses 形状的 Vision 接口以
+  严格 JSON Schema 返回 Caption/OCR，组合文本再进入通用 Embedding 接口。
+- 图片检索基线：C++ 内存/Milvus `ImageStore` 使用独立模型版本化 collection，保存
+  原图尺寸、媒体类型、Caption、OCR 与模型溯源；dense HNSW/COSINE 和 Caption+OCR
+  服务端 BM25 经 RRF 融合，并在两路召回前执行 tenant/ACL 参数化过滤。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：`./scripts/verify_document_retrieval.sh` 通过；80 项 Python 测试全部执行时
-  77 项通过、3 项仅因未启动 Core 跳过，同一脚本启动真实 C++ Core 后 3 项跨进程
-  集成测试全部通过；普通与 `RAG_ENABLE_MILVUS=ON` 两套 C++ 构建均 4/4 测试
-  通过，官方 Milvus C++ SDK、适配器和服务端完成编译。开发机未启动真实
-  Milvus/Kafka/MySQL，因此 collection 在线创建、ICU/BM25 结果及外部故障注入仍需
-  集成环境验证。
-- 下一步：创建 M07 中文 PR 并等待 Review；PR #6 合并后把 M07 PR base 切回
-  `main`。M07 合并后开始 M08 图片入库与召回。
+- 最近验证：`./scripts/verify_image_retrieval.sh` 通过；全量 94 项 Python 测试中
+  90 项通过、4 项仅因常规发现阶段未启动 Core 跳过，脚本启动真实 C++ Core 后
+  4 项 Python→C++ 进程级测试全部通过（含图片索引与检索）；普通与
+  `RAG_ENABLE_MILVUS=ON` 两套 C++ 构建均 5/5 测试通过，官方 Milvus C++ SDK、
+  文档/图片适配器和服务端完成编译。`pip check` 与 `git diff --check` 通过。
+  开发机未启动真实 Milvus/模型网关/Kafka/MySQL，因此 collection 在线创建、
+  ICU/BM25 实际效果、供应商图片限制及外部故障注入仍需集成环境验证。
+- 下一步：提交并推送 M08 分支，创建以 `codex/m06-kafka-ingestion` 为 base 的中文
+  PR；PR #6 合入 `main` 后将 M08 PR base 切回 `main`。Review 合并后开始 M09。
 
 ## 5. 更新日志
 
@@ -99,3 +117,8 @@
   IndexAsset gRPC 协议，以及 C++ 内存/Milvus `DocumentStore`；实现 HNSW dense、
   服务端 BM25、RRF、tenant/ACL 过滤与模型版本化 collection。完整 Python、
   Python→C++ 进程级闭环及 Milvus-enabled C++ 编译测试通过。
+- 2026-08-13：M08 开发完成，待创建 PR。新增统一媒体入库 worker、Pillow 图片安全
+  归一化、通用 Vision Responses 适配、Caption/OCR+文本 Embedding 管线，以及
+  C++ 内存/Milvus `ImageStore`；图片使用独立 collection，通过 HNSW dense、服务端
+  BM25、RRF、tenant/ACL 过滤返回 Evidence。94 项 Python 测试、4 项真实
+  Python→C++ 集成测试和普通/Milvus-enabled 两套 5 项 C++ 测试通过。

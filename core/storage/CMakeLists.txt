@@ -1,5 +1,6 @@
 add_library(rag_core_milvus_store
     src/milvus_document_store.cpp
+    src/milvus_image_store.cpp
 )
 
 target_include_directories(rag_core_milvus_store

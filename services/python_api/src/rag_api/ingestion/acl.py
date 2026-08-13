@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from rag_api.db.models import Asset
-from rag_api.documents.domain import AssetIdentityError
+from rag_api.ingestion.domain import AssetIdentityError
 from rag_api.kafka.contracts import IngestTaskEvent
 
 

@@ -150,6 +150,23 @@ class SettingsTest(unittest.TestCase):
         )
         self.assertNotIn("embedding-secret", repr(settings))
 
+    def test_image_pipeline_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(vision_endpoint_url="grpc://vision", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(image_model_max_bytes=30_000_000, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(image_max_pixels=999_999, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                vision_caption_max_bytes=20_000,
+                vision_ocr_max_bytes=50_000,
+                _env_file=None,
+            )
+
+        settings = Settings(vision_api_key="vision-secret", _env_file=None)
+        self.assertNotIn("vision-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()
