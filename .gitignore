@@ -9,6 +9,9 @@ CMakeUserPresets.json
 .mypy_cache/
 .ruff_cache/
 
+# Local engineering journal (contains working notes; never commit)
+plan/engineering_journal.local.md
+
 # C++ / CMake / Conan
 build/
 cmake-build-*/

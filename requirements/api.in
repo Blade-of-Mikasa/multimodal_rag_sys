@@ -1,5 +1,6 @@
 # Direct runtime and API-test pins. The resolved environment is recorded in
 # api.lock and is what bootstrap_dependencies.sh installs.
+aiobotocore==3.8.0
 alembic==1.19.1
 asyncmy==0.2.13
 fastapi==0.141.1
