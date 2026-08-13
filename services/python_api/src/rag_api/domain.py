@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
+from math import isfinite
 
 
 class SourceScope(IntEnum):
@@ -27,6 +28,7 @@ MAX_ROUTE_COUNT = 6
 MAX_TOP_K = 200
 MIN_TIMEOUT_MS = 100
 MAX_TIMEOUT_MS = 30_000
+MAX_EMBEDDING_DIMENSION = 65_536
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,9 @@ class RetrievalRoute:
     modality: Modality
     top_k: int = 10
     timeout_ms: int = 2_000
+    dense_embedding: tuple[float, ...] = field(default_factory=tuple)
+    embedding_model_id: str = ""
+    embedding_model_version: str = ""
 
     def validate(self) -> list[str]:
         errors: list[str] = []
@@ -52,6 +57,21 @@ class RetrievalRoute:
             errors.append("top_k must be between 1 and 200")
         if not MIN_TIMEOUT_MS <= self.timeout_ms <= MAX_TIMEOUT_MS:
             errors.append("timeout_ms must be between 100 and 30000")
+        if (
+            self.source_scope is SourceScope.LOCAL
+            and self.modality is Modality.DOCUMENT
+        ):
+            if not 1 <= len(self.dense_embedding) <= MAX_EMBEDDING_DIMENSION:
+                errors.append(
+                    "document route dense_embedding dimension must be between "
+                    "1 and 65536"
+                )
+            if not self.embedding_model_id or not self.embedding_model_version:
+                errors.append(
+                    "document route embedding model identity must be specified"
+                )
+            if any(not isfinite(value) for value in self.dense_embedding):
+                errors.append("dense_embedding values must be finite")
         return errors
 
 
@@ -61,12 +81,17 @@ class ExecutionPlan:
     routes: tuple[RetrievalRoute, ...]
     user_id: str = ""
     conversation_id: str = ""
+    tenant_id: str = ""
     allowed_acl_ids: tuple[str, ...] = field(default_factory=tuple)
 
     def validate(self) -> list[str]:
         errors: list[str] = []
         if not self.request_id:
             errors.append("request_id must not be empty")
+        if not self.tenant_id:
+            errors.append("tenant_id must not be empty")
+        if not self.allowed_acl_ids:
+            errors.append("allowed_acl_ids must not be empty")
         if not self.routes:
             errors.append("at least one route is required")
         if len(self.routes) > MAX_ROUTE_COUNT:

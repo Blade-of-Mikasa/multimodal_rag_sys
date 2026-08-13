@@ -12,7 +12,7 @@ using multimodal::rag::core::RetrievalRoute;
 using multimodal::rag::core::SourceScope;
 using multimodal::rag::core::Validate;
 
-void Require(bool condition, const std::string& message) {
+void Require(bool condition, const std::string &message) {
   if (!condition) {
     std::cerr << "FAILED: " << message << '\n';
     std::exit(EXIT_FAILURE);
@@ -27,6 +27,9 @@ RetrievalRoute ValidRoute() {
       .modality = Modality::kDocument,
       .top_k = 20,
       .timeout_ms = 1500,
+      .dense_embedding = {1.0F, 0.0F},
+      .embedding_model_id = "embedding-general",
+      .embedding_model_version = "v1",
   };
 }
 
@@ -35,6 +38,7 @@ void TestValidPlan() {
       .request_id = "request-1",
       .user_id = "user-1",
       .conversation_id = "conversation-1",
+      .tenant_id = "tenant-1",
       .routes = {ValidRoute()},
       .allowed_acl_ids = {"public"},
   };
@@ -48,7 +52,8 @@ void TestInvalidRoute() {
   route.top_k = 0;
   route.timeout_ms = 50;
 
-  Require(Validate(route).size() == 3, "invalid route should report three errors");
+  Require(Validate(route).size() == 3,
+          "invalid route should report three errors");
 }
 
 void TestDuplicateRouteId() {
@@ -58,15 +63,18 @@ void TestDuplicateRouteId() {
 
   ExecutionPlan plan{
       .request_id = "request-2",
+      .tenant_id = "tenant-1",
       .routes = {first, second},
+      .allowed_acl_ids = {"public"},
   };
 
   const auto errors = Validate(plan);
   Require(errors.size() == 1, "duplicate route IDs should be rejected");
-  Require(errors.front() == "route_id must be unique", "duplicate ID error should be stable");
+  Require(errors.front() == "route_id must be unique",
+          "duplicate ID error should be stable");
 }
 
-}  // namespace
+} // namespace
 
 int main() {
   TestValidPlan();

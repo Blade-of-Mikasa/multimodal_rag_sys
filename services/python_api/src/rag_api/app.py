@@ -53,6 +53,8 @@ def create_app(
     app.state.core_client = core_client or GrpcCoreClient(
         resolved_settings.core_grpc_target,
         resolved_settings.core_grpc_timeout_seconds,
+        resolved_settings.core_grpc_index_timeout_seconds,
+        resolved_settings.core_grpc_index_batch_max_bytes,
     )
     app.state.upload_service = upload_service
     app.middleware("http")(request_context_middleware)

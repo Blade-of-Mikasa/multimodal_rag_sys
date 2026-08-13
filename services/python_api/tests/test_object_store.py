@@ -6,7 +6,23 @@ import unittest
 from botocore.exceptions import ClientError
 
 from rag_api.config import Settings
-from rag_api.storage import ObjectNotFoundError, S3ObjectStore
+from rag_api.storage import ObjectNotFoundError, ObjectTooLargeError, S3ObjectStore
+
+
+class FakeBody:
+    def __init__(self, chunks: tuple[bytes, ...]) -> None:
+        self.chunks = chunks
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        pass
+
+    async def iter_chunks(self, *, chunk_size: int):
+        self.chunk_size = chunk_size
+        for chunk in self.chunks:
+            yield chunk
 
 
 class FakeClientContext:
@@ -25,6 +41,11 @@ class FakeS3Client:
         self.presign_call: dict[str, object] | None = None
         self.head_call: dict[str, object] | None = None
         self.delete_call: dict[str, object] | None = None
+        self.get_call: dict[str, object] | None = None
+        self.get_result: dict[str, object] | Exception = {
+            "ContentLength": 6,
+            "Body": FakeBody((b"abc", b"def")),
+        }
         self.head_result: dict[str, object] | Exception = {
             "ContentLength": 123,
             "ContentType": "application/pdf",
@@ -46,6 +67,12 @@ class FakeS3Client:
 
     async def delete_object(self, **arguments) -> None:
         self.delete_call = arguments
+
+    async def get_object(self, **arguments) -> dict[str, object]:
+        self.get_call = arguments
+        if isinstance(self.get_result, Exception):
+            raise self.get_result
+        return self.get_result
 
 
 class FakeSession:
@@ -135,6 +162,18 @@ class S3ObjectStoreTest(unittest.TestCase):
             {"Bucket": "rag-assets", "Key": "objects/invalid"},
             self.client.delete_call,
         )
+
+    def test_download_streams_with_a_hard_limit(self) -> None:
+        payload = asyncio.run(self.store.download("objects/1", max_bytes=6))
+
+        self.assertEqual(b"abcdef", payload)
+        self.assertEqual(
+            {"Bucket": "rag-assets", "Key": "objects/1"},
+            self.client.get_call,
+        )
+
+        with self.assertRaises(ObjectTooLargeError):
+            asyncio.run(self.store.download("objects/1", max_bytes=5))
 
 
 if __name__ == "__main__":

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     debug: bool = False
     core_grpc_target: str = "127.0.0.1:50051"
     core_grpc_timeout_seconds: float = 1.0
+    core_grpc_index_timeout_seconds: float = 60.0
+    core_grpc_index_batch_max_bytes: int = 3_000_000
     mysql_dsn: SecretStr = SecretStr(
         "mysql+asyncmy://rag:rag@127.0.0.1:3306/"
         "multimodal_rag?charset=utf8mb4"
@@ -65,6 +67,16 @@ class Settings(BaseSettings):
     kafka_processing_lease_seconds: int = 300
     kafka_retry_base_seconds: int = 5
     kafka_retry_max_seconds: int = 900
+    embedding_endpoint_url: str = "http://127.0.0.1:8080/v1/embeddings"
+    embedding_api_key: SecretStr | None = None
+    embedding_model_id: str = "embedding-general"
+    embedding_model_version: str = "local"
+    embedding_dimension: int = 1024
+    embedding_batch_size: int = 32
+    embedding_timeout_seconds: float = 30.0
+    document_download_max_bytes: int = 100_000_000
+    document_chunk_max_chars: int = 1_600
+    document_chunk_overlap_chars: int = 200
 
     @field_validator("api_prefix")
     @classmethod
@@ -90,6 +102,91 @@ class Settings(BaseSettings):
                 "core_grpc_timeout_seconds must be between 0.05 and 30"
             )
         return value
+
+    @field_validator("core_grpc_index_timeout_seconds")
+    @classmethod
+    def validate_core_grpc_index_timeout(cls, value: float) -> float:
+        if not 1 <= value <= 600:
+            raise ValueError(
+                "core_grpc_index_timeout_seconds must be between 1 and 600"
+            )
+        return value
+
+    @field_validator("core_grpc_index_batch_max_bytes")
+    @classmethod
+    def validate_core_grpc_index_batch_size(cls, value: int) -> int:
+        if not 65_536 <= value <= 3_500_000:
+            raise ValueError(
+                "core_grpc_index_batch_max_bytes must be between 65536 and 3500000"
+            )
+        return value
+
+    @field_validator("embedding_endpoint_url")
+    @classmethod
+    def validate_embedding_endpoint(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("embedding_endpoint_url must be an HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("embedding_model_id", "embedding_model_version")
+    @classmethod
+    def validate_embedding_identity(cls, value: str) -> str:
+        if not value.strip() or len(value) > 256:
+            raise ValueError(
+                "embedding model identity must contain between 1 and 256 characters"
+            )
+        return value
+
+    @field_validator("embedding_dimension")
+    @classmethod
+    def validate_embedding_dimension(cls, value: int) -> int:
+        if not 1 <= value <= 65_536:
+            raise ValueError("embedding_dimension must be between 1 and 65536")
+        return value
+
+    @field_validator("embedding_batch_size")
+    @classmethod
+    def validate_embedding_batch_size(cls, value: int) -> int:
+        if not 1 <= value <= 512:
+            raise ValueError("embedding_batch_size must be between 1 and 512")
+        return value
+
+    @field_validator("embedding_timeout_seconds")
+    @classmethod
+    def validate_embedding_timeout(cls, value: float) -> float:
+        if not 0.1 <= value <= 600:
+            raise ValueError(
+                "embedding_timeout_seconds must be between 0.1 and 600"
+            )
+        return value
+
+    @field_validator("document_download_max_bytes")
+    @classmethod
+    def validate_document_download_limit(cls, value: int) -> int:
+        if not 1 <= value <= 5_000_000_000:
+            raise ValueError(
+                "document_download_max_bytes must be between 1 and 5000000000"
+            )
+        return value
+
+    @field_validator("document_chunk_max_chars")
+    @classmethod
+    def validate_document_chunk_size(cls, value: int) -> int:
+        if not 128 <= value <= 16_000:
+            raise ValueError(
+                "document_chunk_max_chars must be between 128 and 16000"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def validate_document_chunk_overlap(self) -> "Settings":
+        if not 0 <= self.document_chunk_overlap_chars < self.document_chunk_max_chars:
+            raise ValueError(
+                "document_chunk_overlap_chars must be non-negative and smaller "
+                "than document_chunk_max_chars"
+            )
+        return self
 
     @field_validator("mysql_dsn")
     @classmethod

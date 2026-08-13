@@ -126,6 +126,30 @@ class SettingsTest(unittest.TestCase):
         )
         self.assertNotIn("kafka-secret", repr(settings))
 
+    def test_document_pipeline_settings_are_bounded(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(embedding_endpoint_url="grpc://embedding", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(embedding_dimension=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(document_chunk_max_chars=100, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(core_grpc_index_batch_max_bytes=4_000_000, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                document_chunk_max_chars=256,
+                document_chunk_overlap_chars=256,
+                _env_file=None,
+            )
+
+        settings = Settings(
+            embedding_api_key="embedding-secret",
+            document_chunk_max_chars=512,
+            document_chunk_overlap_chars=64,
+            _env_file=None,
+        )
+        self.assertNotIn("embedding-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()

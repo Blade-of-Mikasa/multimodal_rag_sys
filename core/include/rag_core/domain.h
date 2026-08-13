@@ -26,12 +26,16 @@ struct RetrievalRoute {
   Modality modality{Modality::kUnspecified};
   std::uint32_t top_k{10};
   std::uint32_t timeout_ms{2000};
+  std::vector<float> dense_embedding;
+  std::string embedding_model_id;
+  std::string embedding_model_version;
 };
 
 struct ExecutionPlan {
   std::string request_id;
   std::string user_id;
   std::string conversation_id;
+  std::string tenant_id;
   std::vector<RetrievalRoute> routes;
   std::vector<std::string> allowed_acl_ids;
 };
@@ -40,8 +44,9 @@ inline constexpr std::uint32_t kMaxRouteCount = 6;
 inline constexpr std::uint32_t kMaxTopK = 200;
 inline constexpr std::uint32_t kMinTimeoutMs = 100;
 inline constexpr std::uint32_t kMaxTimeoutMs = 30'000;
+inline constexpr std::uint32_t kMaxEmbeddingDimension = 65'536;
 
-std::vector<std::string> Validate(const RetrievalRoute& route);
-std::vector<std::string> Validate(const ExecutionPlan& plan);
+std::vector<std::string> Validate(const RetrievalRoute &route);
+std::vector<std::string> Validate(const ExecutionPlan &plan);
 
-}  // namespace multimodal::rag::core
+} // namespace multimodal::rag::core
