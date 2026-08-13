@@ -85,6 +85,47 @@ class SettingsTest(unittest.TestCase):
 
         self.assertNotIn("storage-secret", repr(settings))
 
+    def test_kafka_settings_validate_names_security_and_bounds(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(kafka_bootstrap_servers="missing-port", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(kafka_bootstrap_servers="kafka:70000", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(kafka_ingest_topic="invalid topic", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                kafka_retry_topic="rag.ingest.v1",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(kafka_security_protocol="SASL_SSL", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                kafka_sasl_username="rag-user",
+                kafka_sasl_password="secret",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(
+                kafka_retry_base_seconds=10,
+                kafka_retry_max_seconds=5,
+                _env_file=None,
+            )
+
+        settings = Settings(
+            kafka_bootstrap_servers="kafka-a:9092, kafka-b:9092",
+            kafka_security_protocol="SASL_SSL",
+            kafka_sasl_username="rag-user",
+            kafka_sasl_password="kafka-secret",
+            _env_file=None,
+        )
+
+        self.assertEqual(
+            ["kafka-a:9092", "kafka-b:9092"],
+            settings.kafka_bootstrap_server_list,
+        )
+        self.assertNotIn("kafka-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()
