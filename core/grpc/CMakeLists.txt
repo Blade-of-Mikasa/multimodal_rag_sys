@@ -7,7 +7,7 @@ target_include_directories(rag_core_grpc_service
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(rag_core_grpc_service PUBLIC rag_proto)
+target_link_libraries(rag_core_grpc_service PUBLIC rag_core_domain rag_proto)
 target_compile_features(rag_core_grpc_service PUBLIC cxx_std_20)
 
 if(MSVC)
@@ -26,6 +26,11 @@ endif()
 add_executable(rag_core_server src/server_main.cpp)
 target_link_libraries(rag_core_server PRIVATE rag_core_grpc_service)
 target_compile_features(rag_core_server PRIVATE cxx_std_20)
+
+if(TARGET rag_core_milvus_store)
+    target_link_libraries(rag_core_server PRIVATE rag_core_milvus_store)
+    target_compile_definitions(rag_core_server PRIVATE RAG_HAS_MILVUS=1)
+endif()
 
 if(MSVC)
     target_compile_options(rag_core_server PRIVATE /W4 /WX)

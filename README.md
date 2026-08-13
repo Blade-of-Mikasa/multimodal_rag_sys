@@ -21,6 +21,8 @@ MySQL 元数据表、事务边界和迁移方式见
 [`docs/mysql_metadata.md`](docs/mysql_metadata.md)。
 对象存储直传、完整性校验和资产登记流程见
 [`docs/object_storage_upload.md`](docs/object_storage_upload.md)。
+文档解析、通用 Embedding 与 Milvus dense+BM25 混合检索见
+[`docs/document_milvus_retrieval.md`](docs/document_milvus_retrieval.md)。
 
 ## 初始化开发环境
 
@@ -39,6 +41,13 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 首次执行可能需要从源码编译 C++ 依赖，后续会复用仓库 `build/conan-home` 下的本地缓存。
 
 ## 验证
+
+验证文档下载、解析、稳定切片、通用 Embedding、Python/C++ 入库检索闭环，
+并编译 Milvus C++ 适配器：
+
+```bash
+./scripts/verify_document_retrieval.sh
+```
 
 验证 Kafka 事务 outbox、版本化消息、幂等消费、重试、DLQ 和手动提交顺序：
 
@@ -112,6 +121,6 @@ PYTHONPATH="${PWD}/build/generated/python" \
 
 所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、
 `RAG_DEBUG`、`RAG_CORE_GRPC_TARGET`、`RAG_CORE_GRPC_TIMEOUT_SECONDS`、
-`RAG_MYSQL_DSN` 和 `RAG_OBJECT_STORAGE_*` 等环境变量覆盖默认配置。
+`RAG_MYSQL_DSN`、`RAG_OBJECT_STORAGE_*` 和 `RAG_EMBEDDING_*` 等环境变量覆盖默认配置。
 
 当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，用于本地开发与服务骨架验证；生产部署必须配合受控服务网络或补充 TLS。

@@ -45,6 +45,9 @@ message RetrievalRoute {
   Modality modality = 4;
   uint32 top_k = 5;
   uint32 timeout_ms = 6;
+  repeated float dense_embedding = 7;
+  string embedding_model_id = 8;
+  string embedding_model_version = 9;
 }
 
 message ExecutePlanRequest {
@@ -53,6 +56,7 @@ message ExecutePlanRequest {
   string conversation_id = 3;
   repeated RetrievalRoute routes = 4;
   repeated string allowed_acl_ids = 5;
+  string tenant_id = 6;
 }
 
 message Evidence {
@@ -110,6 +114,9 @@ message NormalizedUnit {
   string embedding_model_id = 8;
   string embedding_model_version = 9;
   map<string, string> metadata = 10;
+  uint32 ordinal = 11;
+  uint32 page_number = 12;
+  string content_sha256 = 13;
 }
 
 message IndexAssetRequest {
@@ -118,6 +125,12 @@ message IndexAssetRequest {
   uint64 asset_version = 3;
   string object_key = 4;
   repeated NormalizedUnit units = 5;
+  string tenant_id = 6;
+  string acl_id = 7;
+  string asset_version_id = 8;
+  // The first batch replaces this asset version; later batches append. The
+  // default false preserves safe one-shot replacement semantics.
+  bool append_to_asset_version = 9;
 }
 
 message IndexAssetResponse {
