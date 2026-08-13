@@ -1,4 +1,4 @@
-"""Kafka ingestion processor composing Python normalization with C++ indexing."""
+"""Kafka image processor composing Vision, Embedding, and C++ indexing."""
 
 from __future__ import annotations
 
@@ -10,15 +10,14 @@ from rag_api.core_client import (
     IndexAssetCommand,
     IndexUnit,
 )
-from rag_api.documents.chunking import DocumentChunker
-from rag_api.documents.domain import (
-    DocumentParseError,
-    EmbeddingError,
-    EmbeddingModel,
+from rag_api.documents.domain import EmbeddingError, EmbeddingModel
+from rag_api.images.domain import ImageNormalizationError, VisionError, VisionModel
+from rag_api.images.normalizer import ImageNormalizer
+from rag_api.ingestion.domain import (
+    AssetAclResolver,
+    AssetIdentityError,
+    truncate_utf8,
 )
-from rag_api.documents.parsers import DocumentParser
-from rag_api.domain import Modality
-from rag_api.ingestion.domain import AssetAclResolver, AssetIdentityError
 from rag_api.kafka.contracts import IngestTaskEvent
 from rag_api.kafka.domain import PermanentIngestError, RetryableIngestError
 from rag_api.storage import (
@@ -27,29 +26,28 @@ from rag_api.storage import (
     ObjectStoreError,
     ObjectTooLargeError,
 )
+from rag_api.domain import Modality
 
 
-class DocumentIngestProcessor:
+class ImageIngestProcessor:
     def __init__(
         self,
         *,
         object_store: ObjectStore,
-        parser: DocumentParser,
-        chunker: DocumentChunker,
+        normalizer: ImageNormalizer,
+        vision_model: VisionModel,
         embedding_model: EmbeddingModel,
         core_client: CoreClient,
         acl_resolver: AssetAclResolver,
         max_download_bytes: int,
-        embedding_batch_size: int,
     ) -> None:
         self._object_store = object_store
-        self._parser = parser
-        self._chunker = chunker
+        self._normalizer = normalizer
+        self._vision_model = vision_model
         self._embedding_model = embedding_model
         self._core_client = core_client
         self._acl_resolver = acl_resolver
         self._max_download_bytes = max_download_bytes
-        self._embedding_batch_size = embedding_batch_size
 
     async def process(self, event: IngestTaskEvent) -> None:
         try:
@@ -63,11 +61,11 @@ class DocumentIngestProcessor:
             )
         except ObjectTooLargeError as error:
             raise PermanentIngestError(
-                "DOCUMENT_TOO_LARGE", "document exceeds the ingestion limit"
+                "IMAGE_TOO_LARGE", "image exceeds the ingestion byte limit"
             ) from error
         except ObjectNotFoundError as error:
             raise RetryableIngestError(
-                "DOCUMENT_NOT_FOUND", "document object is not available"
+                "IMAGE_NOT_FOUND", "image object is not available"
             ) from error
         except ObjectStoreError as error:
             raise RetryableIngestError(
@@ -76,38 +74,43 @@ class DocumentIngestProcessor:
 
         if len(payload) != event.size_bytes:
             raise PermanentIngestError(
-                "DOCUMENT_SIZE_MISMATCH", "downloaded object size does not match event"
+                "IMAGE_SIZE_MISMATCH", "downloaded image size does not match event"
             )
         if sha256(payload).hexdigest() != event.content_sha256:
             raise PermanentIngestError(
-                "DOCUMENT_CHECKSUM_MISMATCH",
-                "downloaded object checksum does not match event",
+                "IMAGE_CHECKSUM_MISMATCH",
+                "downloaded image checksum does not match event",
             )
+        try:
+            image = self._normalizer.normalize(payload, event.content_type)
+        except ImageNormalizationError as error:
+            raise PermanentIngestError(
+                "IMAGE_NORMALIZATION_FAILED", str(error)
+            ) from error
 
         try:
-            blocks = self._parser.parse(payload, event.content_type)
-            chunks = self._chunker.chunk(
-                asset_version_id=str(event.asset_version_id), blocks=blocks
+            analysis = await self._vision_model.analyze(image)
+        except VisionError as error:
+            error_type = (
+                RetryableIngestError if error.retryable else PermanentIngestError
             )
-        except (DocumentParseError, ValueError) as error:
-            raise PermanentIngestError("DOCUMENT_NORMALIZATION_FAILED", str(error)) from error
+            raise error_type("VISION_ANALYSIS_FAILED", str(error)) from error
 
-        embeddings: list[tuple[float, ...]] = []
+        semantic_text = analysis.caption
+        if analysis.ocr_text:
+            semantic_text += f"\nOCR:\n{analysis.ocr_text}"
+        semantic_text = truncate_utf8(semantic_text, 60_000)
         try:
-            for start in range(0, len(chunks), self._embedding_batch_size):
-                batch = chunks[start : start + self._embedding_batch_size]
-                embeddings.extend(
-                    await self._embedding_model.embed(
-                        tuple(chunk.content for chunk in batch)
-                    )
-                )
+            embeddings = await self._embedding_model.embed((semantic_text,))
         except EmbeddingError as error:
-            error_type = RetryableIngestError if error.retryable else PermanentIngestError
+            error_type = (
+                RetryableIngestError if error.retryable else PermanentIngestError
+            )
             raise error_type("EMBEDDING_FAILED", str(error)) from error
-        if len(embeddings) != len(chunks):
+        if len(embeddings) != 1:
             raise PermanentIngestError(
                 "EMBEDDING_COUNT_MISMATCH",
-                "embedding response count does not match chunks",
+                "embedding response count does not match the image unit",
             )
 
         command = IndexAssetCommand(
@@ -118,20 +121,29 @@ class DocumentIngestProcessor:
             asset_version_id=str(event.asset_version_id),
             asset_version=event.version_number,
             object_key=event.object_key,
-            units=tuple(
+            units=(
                 IndexUnit(
-                    unit_id=chunk.chunk_id,
-                    modality=Modality.DOCUMENT,
-                    content=chunk.content,
-                    title=chunk.title,
-                    ordinal=chunk.ordinal,
-                    page_number=chunk.page_number,
-                    content_sha256=chunk.content_sha256,
-                    dense_embedding=embedding,
+                    unit_id=str(event.asset_version_id),
+                    modality=Modality.IMAGE,
+                    content=semantic_text,
+                    title=truncate_utf8(analysis.caption, 2_048),
+                    ordinal=0,
+                    page_number=0,
+                    content_sha256=event.content_sha256,
+                    dense_embedding=embeddings[0],
                     embedding_model_id=self._embedding_model.model_id,
                     embedding_model_version=self._embedding_model.model_version,
-                )
-                for chunk, embedding in zip(chunks, embeddings, strict=True)
+                    metadata=(
+                        ("media_type", image.media_type),
+                        ("width", str(image.width)),
+                        ("height", str(image.height)),
+                        ("model_width", str(image.model_width)),
+                        ("model_height", str(image.model_height)),
+                        ("ocr_text", analysis.ocr_text),
+                        ("vision_model_id", self._vision_model.model_id),
+                        ("vision_model_version", self._vision_model.model_version),
+                    ),
+                ),
             ),
         )
         try:
@@ -140,7 +152,7 @@ class DocumentIngestProcessor:
             raise RetryableIngestError("INDEX_CORE_UNAVAILABLE", str(error)) from error
         except ValueError as error:
             raise PermanentIngestError("INDEX_CONTRACT_INVALID", str(error)) from error
-        if result.indexed_unit_count != len(chunks):
+        if result.indexed_unit_count != 1:
             raise RetryableIngestError(
-                "INDEX_COUNT_MISMATCH", "C++ Core indexed an unexpected unit count"
+                "INDEX_COUNT_MISMATCH", "C++ Core indexed an unexpected image count"
             )

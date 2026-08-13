@@ -100,9 +100,10 @@ rag-kafka-outbox
 ```
 
 `create_ingest_worker(settings, session_factory=..., processor=...)` 接受调用方管理的
-数据库会话工厂和业务处理器。M06 完成可靠消息编排；M07 文档入库、M08 图片入库和
-M09 视频入库将分别提供处理器，复用同一消费状态机，不在消息层耦合解析或模型
-供应商。
+数据库会话工厂和业务处理器。M06 完成可靠消息编排；文档、图片及后续视频处理器
+由一个统一 worker 在进程内按媒体类型路由，复用同一消费状态机，不在消息层耦合
+解析或模型供应商。不能用同一 consumer group 分别部署“只认识一种媒体”的竞争
+消费者，否则 Kafka 可能把图片消息交给文档进程。
 
 生产部署还应配置 topic 副本数、`min.insync.replicas`、容量告警和 DLQ 保留策略。
 本地专项验证不需要真实 Kafka/MySQL：它验证真实 aiokafka 客户端参数、MySQL 方言

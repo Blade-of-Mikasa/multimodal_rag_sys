@@ -59,16 +59,16 @@ class RetrievalRoute:
             errors.append("timeout_ms must be between 100 and 30000")
         if (
             self.source_scope is SourceScope.LOCAL
-            and self.modality is Modality.DOCUMENT
+            and self.modality in {Modality.DOCUMENT, Modality.IMAGE}
         ):
             if not 1 <= len(self.dense_embedding) <= MAX_EMBEDDING_DIMENSION:
                 errors.append(
-                    "document route dense_embedding dimension must be between "
+                    "local route dense_embedding dimension must be between "
                     "1 and 65536"
                 )
             if not self.embedding_model_id or not self.embedding_model_version:
                 errors.append(
-                    "document route embedding model identity must be specified"
+                    "local route embedding model identity must be specified"
                 )
             if any(not isfinite(value) for value in self.dense_embedding):
                 errors.append("dense_embedding values must be finite")

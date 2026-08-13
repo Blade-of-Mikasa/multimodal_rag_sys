@@ -17,6 +17,7 @@ dependencies = [
     "grpcio==1.83.0",
     "pydantic==2.13.4",
     "pydantic-settings==2.15.0",
+    "Pillow==12.3.0",
     "pypdf==6.14.2",
     "protobuf==7.35.1",
     "SQLAlchemy[asyncio]==2.0.52",
@@ -25,6 +26,7 @@ dependencies = [
 
 [project.scripts]
 rag-document-worker = "rag_api.documents.worker_main:main"
+rag-ingest-worker = "rag_api.ingestion.worker_main:main"
 rag-kafka-outbox = "rag_api.kafka.publisher_main:main"
 
 [tool.setuptools]

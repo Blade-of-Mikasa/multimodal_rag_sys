@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from rag_api.documents.chunking import DocumentChunker
-from rag_api.documents.domain import DocumentParseError
+from rag_api.documents.domain import DocumentParseError, ParsedBlock
 from rag_api.documents.parsers import DocumentParser
 
 
@@ -34,6 +34,14 @@ class DocumentParsingTest(unittest.TestCase):
         self.assertGreater(len(chunks), 1)
         self.assertTrue(all(len(chunk.content) <= 128 for chunk in chunks))
         self.assertIn(chunks[0].content[-8:], chunks[1].content)
+
+    def test_title_is_bounded_by_utf8_bytes_for_milvus(self) -> None:
+        chunks = DocumentChunker(max_chars=128, overlap_chars=16).chunk(
+            asset_version_id="version-1",
+            blocks=(ParsedBlock(content="正文", title="标题" * 2_000),),
+        )
+
+        self.assertLessEqual(len(chunks[0].title.encode("utf-8")), 2_048)
 
     def test_unsupported_and_invalid_documents_are_rejected(self) -> None:
         parser = DocumentParser()

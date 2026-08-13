@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence
 
-from rag_api.kafka.contracts import IngestTaskEvent
-
 
 class DocumentParseError(ValueError):
     """The source bytes cannot be converted into supported text."""
@@ -18,10 +16,6 @@ class EmbeddingError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool) -> None:
         super().__init__(message)
         self.retryable = retryable
-
-
-class AssetIdentityError(RuntimeError):
-    """The durable MySQL asset identity no longer matches the event."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +46,3 @@ class EmbeddingModel(Protocol):
     def dimension(self) -> int: ...
 
     async def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]: ...
-
-
-class AssetAclResolver(Protocol):
-    async def resolve_acl_id(self, event: IngestTaskEvent) -> str: ...

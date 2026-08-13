@@ -27,16 +27,17 @@ std::vector<std::string> Validate(const RetrievalRoute &route) {
     errors.emplace_back("timeout_ms must be between 100 and 30000");
   }
   if (route.source_scope == SourceScope::kLocal &&
-      route.modality == Modality::kDocument) {
+      (route.modality == Modality::kDocument ||
+       route.modality == Modality::kImage)) {
     if (route.dense_embedding.empty() ||
         route.dense_embedding.size() > kMaxEmbeddingDimension) {
-      errors.emplace_back("document route dense_embedding dimension must be "
+      errors.emplace_back("local route dense_embedding dimension must be "
                           "between 1 and 65536");
     }
     if (route.embedding_model_id.empty() ||
         route.embedding_model_version.empty()) {
       errors.emplace_back(
-          "document route embedding model identity must be specified");
+          "local route embedding model identity must be specified");
     }
     for (const float value : route.dense_embedding) {
       if (!std::isfinite(value)) {

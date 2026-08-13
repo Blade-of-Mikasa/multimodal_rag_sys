@@ -69,8 +69,10 @@ RAG_DOCUMENT_CHUNK_OVERLAP_CHARS=200
 生成 gRPC 代码后启动 worker：
 
 ```bash
-PYTHONPATH="${PWD}/build/generated/python" .venv/bin/rag-document-worker
+PYTHONPATH="${PWD}/build/generated/python" .venv/bin/rag-ingest-worker
 ```
+
+`rag-document-worker` 仅作为兼容命令保留，实际同样启动统一的媒体类型路由 worker。
 
 生产 C++ Core 使用 Milvus：
 

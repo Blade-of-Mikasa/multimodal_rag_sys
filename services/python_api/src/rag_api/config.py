@@ -77,6 +77,17 @@ class Settings(BaseSettings):
     document_download_max_bytes: int = 100_000_000
     document_chunk_max_chars: int = 1_600
     document_chunk_overlap_chars: int = 200
+    vision_endpoint_url: str = "http://127.0.0.1:8080/v1/responses"
+    vision_api_key: SecretStr | None = None
+    vision_model_id: str = "vision-general"
+    vision_model_version: str = "local"
+    vision_timeout_seconds: float = 60.0
+    vision_caption_max_bytes: int = 8_192
+    vision_ocr_max_bytes: int = 49_152
+    image_download_max_bytes: int = 20_000_000
+    image_max_pixels: int = 25_000_000
+    image_model_max_dimension: int = 4_096
+    image_model_max_bytes: int = 10_000_000
 
     @field_validator("api_prefix")
     @classmethod
@@ -187,6 +198,76 @@ class Settings(BaseSettings):
                 "than document_chunk_max_chars"
             )
         return self
+
+    @field_validator("vision_endpoint_url")
+    @classmethod
+    def validate_vision_endpoint(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("vision_endpoint_url must be an HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("vision_model_id", "vision_model_version")
+    @classmethod
+    def validate_vision_identity(cls, value: str) -> str:
+        if not value.strip() or len(value) > 256:
+            raise ValueError(
+                "vision model identity must contain between 1 and 256 characters"
+            )
+        return value
+
+    @field_validator("vision_timeout_seconds")
+    @classmethod
+    def validate_vision_timeout(cls, value: float) -> float:
+        if not 0.1 <= value <= 600:
+            raise ValueError("vision_timeout_seconds must be between 0.1 and 600")
+        return value
+
+    @field_validator("vision_caption_max_bytes", "vision_ocr_max_bytes")
+    @classmethod
+    def validate_vision_text_limit(cls, value: int) -> int:
+        if not 256 <= value <= 60_000:
+            raise ValueError("vision text byte limits must be between 256 and 60000")
+        return value
+
+    @model_validator(mode="after")
+    def validate_vision_combined_text_limit(self) -> "Settings":
+        if self.vision_caption_max_bytes + self.vision_ocr_max_bytes > 60_000:
+            raise ValueError(
+                "combined vision caption and OCR byte limits must not exceed 60000"
+            )
+        return self
+
+    @field_validator("image_download_max_bytes", "image_model_max_bytes")
+    @classmethod
+    def validate_image_byte_limit(cls, value: int) -> int:
+        if not 1 <= value <= 100_000_000:
+            raise ValueError("image byte limits must be between 1 and 100000000")
+        return value
+
+    @model_validator(mode="after")
+    def validate_image_model_byte_limit(self) -> "Settings":
+        if self.image_model_max_bytes > self.image_download_max_bytes:
+            raise ValueError(
+                "image_model_max_bytes must not exceed image_download_max_bytes"
+            )
+        return self
+
+    @field_validator("image_max_pixels")
+    @classmethod
+    def validate_image_pixel_limit(cls, value: int) -> int:
+        if not 1_000_000 <= value <= 100_000_000:
+            raise ValueError("image_max_pixels must be between 1000000 and 100000000")
+        return value
+
+    @field_validator("image_model_max_dimension")
+    @classmethod
+    def validate_image_dimension_limit(cls, value: int) -> int:
+        if not 512 <= value <= 16_384:
+            raise ValueError(
+                "image_model_max_dimension must be between 512 and 16384"
+            )
+        return value
 
     @field_validator("mysql_dsn")
     @classmethod

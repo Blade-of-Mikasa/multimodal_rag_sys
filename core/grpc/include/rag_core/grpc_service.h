@@ -4,6 +4,7 @@
 
 #include "rag_core.grpc.pb.h"
 #include "rag_core/document_store.h"
+#include "rag_core/image_store.h"
 
 namespace multimodal::rag::core {
 
@@ -13,7 +14,8 @@ inline constexpr char kCoreServiceVersion[] = "0.1.0";
 class RagCoreServiceImpl final
     : public multimodal::rag::v1::RagCoreService::Service {
 public:
-  explicit RagCoreServiceImpl(DocumentStore *document_store = nullptr);
+  explicit RagCoreServiceImpl(DocumentStore *document_store = nullptr,
+                              ImageStore *image_store = nullptr);
 
   grpc::Status Health(grpc::ServerContext *context,
                       const multimodal::rag::v1::HealthRequest *request,
@@ -26,12 +28,14 @@ public:
 
 private:
   DocumentStore *document_store_;
+  ImageStore *image_store_;
 };
 
 class IndexCoreServiceImpl final
     : public multimodal::rag::v1::IndexCoreService::Service {
 public:
-  explicit IndexCoreServiceImpl(DocumentStore *document_store);
+  explicit IndexCoreServiceImpl(DocumentStore *document_store,
+                                ImageStore *image_store = nullptr);
 
   grpc::Status
   IndexAsset(grpc::ServerContext *context,
@@ -40,6 +44,7 @@ public:
 
 private:
   DocumentStore *document_store_;
+  ImageStore *image_store_;
 };
 
 } // namespace multimodal::rag::core
