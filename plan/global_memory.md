@@ -51,7 +51,7 @@
 | M05 | 对象存储与上传链路 | 已完成 | 预签名上传、资产登记、文件校验完成 |
 | M06 | Kafka 入库任务链路 | Review 中 | ingest/retry/DLQ、幂等消费与状态流转完成 |
 | M07 | 文档入库与 Milvus 检索 | 已完成（随 PR #7 合入 M06 分支） | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
-| M08 | 图片入库与召回 | 开发完成，待创建 PR | Caption、OCR、向量化与图片证据返回完成 |
+| M08 | 图片入库与召回 | Review 中 | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | 待开始 | ASR、场景切分、关键帧与时间片段召回完成 |
 | M10 | 联网搜索与网页抽取 | 待开始 | SearchProvider、正文抽取、来源时间与失败降级完成 |
 | M11 | 证据治理与上下文构建 | 待开始 | 去重、冲突规则、Token 预算与 citation 映射完成 |
@@ -60,7 +60,8 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M08 图片入库与召回开发、文档和验证已完成，待推送并创建中文 PR。
+- 当前模块：M08 图片入库与召回开发、文档和验证已完成，
+  [PR #8](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/8) Review 中。
   [PR #7](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/7) 已合入
   `codex/m06-kafka-ingestion`；[PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6)
   仍是 M06+M07 进入 `main` 的集成路径。
@@ -95,8 +96,8 @@
   文档/图片适配器和服务端完成编译。`pip check` 与 `git diff --check` 通过。
   开发机未启动真实 Milvus/模型网关/Kafka/MySQL，因此 collection 在线创建、
   ICU/BM25 实际效果、供应商图片限制及外部故障注入仍需集成环境验证。
-- 下一步：提交并推送 M08 分支，创建以 `codex/m06-kafka-ingestion` 为 base 的中文
-  PR；PR #6 合入 `main` 后将 M08 PR base 切回 `main`。Review 合并后开始 M09。
+- 下一步：Review [PR #8](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/8)；
+  PR #6 合入 `main` 后将 PR #8 base 切回 `main`。Review 合并后开始 M09。
 
 ## 5. 更新日志
 
@@ -117,7 +118,8 @@
   IndexAsset gRPC 协议，以及 C++ 内存/Milvus `DocumentStore`；实现 HNSW dense、
   服务端 BM25、RRF、tenant/ACL 过滤与模型版本化 collection。完整 Python、
   Python→C++ 进程级闭环及 Milvus-enabled C++ 编译测试通过。
-- 2026-08-13：M08 开发完成，待创建 PR。新增统一媒体入库 worker、Pillow 图片安全
+- 2026-08-13：M08 开发完成，[PR #8](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/8)
+  Review 中。新增统一媒体入库 worker、Pillow 图片安全
   归一化、通用 Vision Responses 适配、Caption/OCR+文本 Embedding 管线，以及
   C++ 内存/Milvus `ImageStore`；图片使用独立 collection，通过 HNSW dense、服务端
   BM25、RRF、tenant/ACL 过滤返回 Evidence。94 项 Python 测试、4 项真实
