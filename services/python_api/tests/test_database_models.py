@@ -80,6 +80,15 @@ class DatabaseModelsTest(unittest.TestCase):
         self.assertIn(("asset_id", "version_number"), version_uniques)
         self.assertIn("ck_ingest_tasks_attempts", named_checks)
         self.assertIn("ck_conversation_messages_role", named_checks)
+        ingest_table = Base.metadata.tables["ingest_tasks"]
+        self.assertIn(
+            "ix_ingest_tasks_outbox",
+            {index.name for index in ingest_table.indexes},
+        )
+        self.assertIn("lease_owner", ingest_table.columns)
+        self.assertIn("lease_expires_at", ingest_table.columns)
+        self.assertIn("last_event_id", ingest_table.columns)
+        self.assertIn("last_publish_error_message", ingest_table.columns)
 
     def test_async_engine_and_session_factory_do_not_connect_eagerly(self) -> None:
         settings = Settings(

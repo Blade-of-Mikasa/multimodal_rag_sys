@@ -38,7 +38,7 @@
 | M03 | C++ Core gRPC 基础服务 | 已完成 | Health 与 ExecutePlan 空实现可由 Python 调通 |
 | M04 | MySQL 元数据与迁移 | 已完成 | 资产、版本、任务、会话、权限基础表与迁移完成 |
 | M05 | 对象存储与上传链路 | Review 中 | 预签名上传、资产登记、文件校验完成 |
-| M06 | Kafka 入库任务链路 | 待开始 | ingest/retry/DLQ、幂等消费与状态流转完成 |
+| M06 | Kafka 入库任务链路 | Review 中 | ingest/retry/DLQ、幂等消费与状态流转完成 |
 | M07 | 文档入库与 Milvus 检索 | 待开始 | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
 | M08 | 图片入库与召回 | 待开始 | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | 待开始 | ASR、场景切分、关键帧与时间片段召回完成 |
@@ -49,16 +49,17 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M05 开发与验证已完成，[PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) Review 中；合并后进入 M06 Kafka 入库任务链路。
-- 当前分支：`codex/m05-object-storage-upload`，目标分支为 `origin/main`。
+- 当前模块：M06 开发与验证已完成，[PR #5](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/5) Review 中；由于 [PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) 尚未合并，当前为只展示 Kafka 差异的堆叠 PR。
+- 当前分支：`codex/m06-kafka-ingestion`，临时目标分支为 `codex/m05-object-storage-upload`；PR #4 合并后将 PR #5 基线切回 `main`。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
 - 上传基线：前端通过短期预签名 URL 直传对象存储；Python 两阶段 API 负责资产登记、服务端对象校验，以及在同一 MySQL 事务中更新处理状态并创建唯一入库任务。当前单次 PUT 上限 5 GB。
+- Kafka 基线：Python 使用 aiokafka 正式 AsyncIO API；生产者固定幂等与 `acks=all`，消费者关闭自动提交。MySQL transactional outbox 通过租约发布 ingest/retry/DLQ，消费者先落库再提交 offset，并以任务状态、attempt、处理租约 heartbeat 和有界指数退避实现至少一次下的幂等恢复。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：`./scripts/verify_object_storage.sh` 与 `./scripts/verify_foundation.sh`；48 项 Python 测试中 45 项通过、3 项需运行中 C++ Core 而跳过，真实 aiobotocore SigV4 签名及 Python/C++ 基础回归通过。开发机未配置 MySQL/S3，在线端到端上传尚未执行。
-- 下一步：等待 M05 PR Review；合并时将 M05 状态更新为“已完成”，之后推进 M06。
+- 最近验证：`./scripts/verify_kafka_ingestion.sh` 与 `./scripts/verify_foundation.sh`；71 项 Python 测试中 68 项通过、3 项需运行中 C++ Core 而跳过，Kafka 契约、真实 aiokafka 配置、MySQL 方言锁 SQL、状态流转、租约续期、DLQ 和 Python/C++ 基础回归通过。开发机未配置真实 Kafka/MySQL，在线故障注入尚未执行。
+- 下一步：等待 PR #4 Review；合并后把 PR #5 基线切回 `main`。PR #5 Review 通过并合并后进入 M07 文档入库与 Milvus 检索。
 
 ## 5. 更新日志
 
@@ -72,3 +73,4 @@
 - 2026-08-12：M04 开发完成，[PR #3](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/3) Review 中。新增 7 张 MySQL 8.0 基础表、异步 SQLAlchemy 会话、首版 Alembic 升降级迁移和专项验证；离线 MySQL 方言及全量基础回归通过。
 - 2026-08-12：M04 通过 [PR #3](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/3) 合并，状态更新为已完成。
 - 2026-08-12：M05 开发完成，[PR #4](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/4) Review 中。新增 S3 兼容异步适配、两阶段直传 API、服务端 SHA-256/大小/类型校验、条件写入保护，以及事务化幂等任务登记；专项与基础回归通过。
+- 2026-08-13：M06 开发完成，[PR #5](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/5) Review 中。新增版本化 Kafka 契约、MySQL transactional outbox、幂等生产与手动提交消费、处理租约 heartbeat、有界重试及 poison/终态 DLQ；71 项 Python 测试与基础回归通过。PR 暂时堆叠在尚未合并的 PR #4 上。

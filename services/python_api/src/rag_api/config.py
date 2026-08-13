@@ -46,6 +46,25 @@ class Settings(BaseSettings):
     object_storage_addressing_style: Literal["path", "virtual"] = "path"
     upload_url_expires_seconds: int = 900
     upload_max_bytes: int = 5_000_000_000
+    kafka_bootstrap_servers: str = "127.0.0.1:9092"
+    kafka_client_id: str = "multimodal-rag"
+    kafka_ingest_topic: str = "rag.ingest.v1"
+    kafka_retry_topic: str = "rag.ingest.retry.v1"
+    kafka_dlq_topic: str = "rag.ingest.dlq.v1"
+    kafka_consumer_group: str = "multimodal-rag-ingest-v1"
+    kafka_security_protocol: Literal[
+        "PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"
+    ] = "PLAINTEXT"
+    kafka_sasl_mechanism: Literal[
+        "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
+    ] = "PLAIN"
+    kafka_sasl_username: SecretStr | None = None
+    kafka_sasl_password: SecretStr | None = None
+    kafka_outbox_batch_size: int = 100
+    kafka_publish_lease_seconds: int = 30
+    kafka_processing_lease_seconds: int = 300
+    kafka_retry_base_seconds: int = 5
+    kafka_retry_max_seconds: int = 900
 
     @field_validator("api_prefix")
     @classmethod
@@ -137,3 +156,88 @@ class Settings(BaseSettings):
                 "object storage session token requires explicit access keys"
             )
         return self
+
+    @field_validator("kafka_bootstrap_servers")
+    @classmethod
+    def validate_kafka_bootstrap_servers(cls, value: str) -> str:
+        servers = [server.strip() for server in value.split(",")]
+        if not servers or any(not _is_valid_kafka_server(server) for server in servers):
+            raise ValueError(
+                "kafka_bootstrap_servers must be a comma-separated host:port list"
+            )
+        return ",".join(servers)
+
+    @field_validator(
+        "kafka_client_id",
+        "kafka_consumer_group",
+        "kafka_ingest_topic",
+        "kafka_retry_topic",
+        "kafka_dlq_topic",
+    )
+    @classmethod
+    def validate_kafka_names(cls, value: str) -> str:
+        if not value or len(value) > 249:
+            raise ValueError("Kafka names must contain between 1 and 249 characters")
+        if not value.isascii() or any(
+            not (character.isalnum() or character in "._-") for character in value
+        ):
+            raise ValueError("Kafka names contain unsupported characters")
+        return value
+
+    @field_validator("kafka_outbox_batch_size")
+    @classmethod
+    def validate_kafka_batch_size(cls, value: int) -> int:
+        if not 1 <= value <= 1000:
+            raise ValueError("kafka_outbox_batch_size must be between 1 and 1000")
+        return value
+
+    @field_validator(
+        "kafka_publish_lease_seconds",
+        "kafka_processing_lease_seconds",
+        "kafka_retry_base_seconds",
+        "kafka_retry_max_seconds",
+    )
+    @classmethod
+    def validate_kafka_durations(cls, value: int) -> int:
+        if not 1 <= value <= 86_400:
+            raise ValueError("Kafka durations must be between 1 and 86400 seconds")
+        return value
+
+    @model_validator(mode="after")
+    def validate_kafka_settings(self) -> "Settings":
+        if len(
+            {
+                self.kafka_ingest_topic,
+                self.kafka_retry_topic,
+                self.kafka_dlq_topic,
+            }
+        ) != 3:
+            raise ValueError("Kafka ingest, retry, and DLQ topics must be distinct")
+        if (self.kafka_sasl_username is None) != (
+            self.kafka_sasl_password is None
+        ):
+            raise ValueError("Kafka SASL username and password must be set together")
+        if self.kafka_security_protocol.startswith("SASL_") and (
+            self.kafka_sasl_username is None
+        ):
+            raise ValueError("Kafka SASL credentials are required by security protocol")
+        if not self.kafka_security_protocol.startswith("SASL_") and (
+            self.kafka_sasl_username is not None
+        ):
+            raise ValueError("Kafka SASL credentials require a SASL security protocol")
+        if self.kafka_retry_base_seconds > self.kafka_retry_max_seconds:
+            raise ValueError("Kafka retry base must not exceed retry maximum")
+        return self
+
+    @property
+    def kafka_bootstrap_server_list(self) -> list[str]:
+        return self.kafka_bootstrap_servers.split(",")
+
+
+def _is_valid_kafka_server(server: str) -> bool:
+    host, separator, port_text = server.rpartition(":")
+    if not separator or not host or not port_text.isdigit():
+        return False
+    if ":" in host and not (host.startswith("[") and host.endswith("]")):
+        return False
+    return 1 <= int(port_text) <= 65_535

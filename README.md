@@ -40,6 +40,12 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 
 ## 验证
 
+验证 Kafka 事务 outbox、版本化消息、幂等消费、重试、DLQ 和手动提交顺序：
+
+```bash
+./scripts/verify_kafka_ingestion.sh
+```
+
 验证 S3 预签名、对象完整性检查、上传 API 和幂等任务登记：
 
 ```bash

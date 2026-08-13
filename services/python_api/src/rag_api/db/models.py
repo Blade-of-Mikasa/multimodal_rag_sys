@@ -180,6 +180,13 @@ class IngestTask(UuidPrimaryKeyMixin, TimestampMixin, Base):
         ),
         UniqueConstraint("dedupe_key"),
         Index("ix_ingest_tasks_dispatch", "status", "available_at"),
+        Index(
+            "ix_ingest_tasks_outbox",
+            "published_at",
+            "status",
+            "available_at",
+            "lease_expires_at",
+        ),
         Index("ix_ingest_tasks_version_type", "asset_version_id", "task_type"),
         MYSQL_TABLE_OPTIONS,
     )
@@ -224,8 +231,21 @@ class IngestTask(UuidPrimaryKeyMixin, TimestampMixin, Base):
         mysql.DATETIME(fsp=6),
         nullable=True,
     )
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        mysql.DATETIME(fsp=6),
+        nullable=True,
+    )
+    last_event_id: Mapped[str | None] = mapped_column(
+        mysql.CHAR(36),
+        nullable=True,
+    )
     last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_publish_error_message: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
     available_at: Mapped[datetime] = mapped_column(
         mysql.DATETIME(fsp=6),
         nullable=False,
