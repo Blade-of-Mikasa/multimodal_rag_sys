@@ -57,7 +57,7 @@
 | M06 | Kafka 入库任务链路 | Review 中 | ingest/retry/DLQ、幂等消费与状态流转完成 |
 | M07 | 文档入库与 Milvus 检索 | 已完成（随 PR #7 合入 M06 分支） | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
 | M08 | 图片入库与召回 | 已完成（随 PR #8 合入 M06 分支） | Caption、OCR、向量化与图片证据返回完成 |
-| M09 | 视频入库与召回 | 开发完成，待创建 PR | ASR、场景切分、关键帧与时间片段召回完成 |
+| M09 | 视频入库与召回 | Review 中 | ASR、场景切分、关键帧与时间片段召回完成 |
 | M10 | 联网搜索与网页抽取 | 待开始 | SearchProvider、正文抽取、来源时间与失败降级完成 |
 | M11 | 证据治理与上下文构建 | 待开始 | 去重、冲突规则、Token 预算与 citation 映射完成 |
 | M12 | 最终生成与前端问答 | 待开始 | 基于证据生成、流式回答和引用展示完成 |
@@ -65,7 +65,8 @@
 
 ## 4. 当前工作快照
 
-- 当前模块：M09 视频入库与召回开发、文档和验证已完成，正在创建 PR。
+- 当前模块：M09 视频入库与召回开发、文档和验证已完成，
+  [PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9) Review 中。
   [PR #8](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/8) 已合入
   `codex/m06-kafka-ingestion`；[PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6)
   仍是 M06+M07+M08 进入 `main` 的集成路径。
@@ -112,7 +113,8 @@
   开发机未安装 FFmpeg，真实编解码 smoke 明确跳过；命令、时间戳和覆盖预算由 fake
   process 单测验证。开发机也未启动真实 Milvus/模型网关/Kafka/MySQL，因此视频
   collection 在线创建、实际编解码、供应商 ASR/Vision 兼容性及故障注入仍需集成环境验证。
-- 下一步：创建并 Review M09 PR；PR #6 合入 `main` 后将 M09 PR base 切回 `main`。
+- 下一步：Review [PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)；
+  PR #6 合入 `main` 后将 M09 PR base 切回 `main`。
   M09 合并后开始 M10 联网搜索与网页抽取。
 
 ## 5. 更新日志
@@ -142,7 +144,8 @@
   Python→C++ 集成测试和普通/Milvus-enabled 两套 5 项 C++ 测试通过。
 - 2026-08-15：M08 通过 [PR #8](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/8)
   合入 `codex/m06-kafka-ingestion`，M09 从包含 M06-M08 的完整分支继续开发。
-- 2026-08-15：M09 开发完成，待创建 PR。新增视频流式落盘、FFprobe/FFmpeg 安全
+- 2026-08-15：M09 开发完成，[PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)
+  Review 中。新增视频流式落盘、FFprobe/FFmpeg 安全
   探测、8 分钟 WAV 分片、通用带时间戳 ASR、场景关键帧+最大间隔兜底、
   Caption/OCR/Transcript 时间片，以及 C++ 内存/Milvus `VideoStore`；Video
   Evidence 返回可播放区间。106 项 Python 测试、5 项真实 Python→C++ 集成测试及
