@@ -323,8 +323,12 @@ class GrpcCoreClient:
         ):
             raise ValueError("index asset identity and units must not be empty")
         first = command.units[0]
-        if first.modality not in {Modality.DOCUMENT, Modality.IMAGE}:
-            raise ValueError("index unit modality must be document or image")
+        if first.modality not in {
+            Modality.DOCUMENT,
+            Modality.IMAGE,
+            Modality.VIDEO,
+        }:
+            raise ValueError("index unit modality must be document, image, or video")
         if first.modality is Modality.IMAGE and len(command.units) != 1:
             raise ValueError("one image asset version must contain exactly one unit")
         unit_ids: set[str] = set()
@@ -382,6 +386,45 @@ class GrpcCoreClient:
                     or not metadata_values.get("vision_model_version")
                 ):
                     raise ValueError("image index metadata and caption must be valid")
+            if unit.modality is Modality.VIDEO:
+                integer_fields = {
+                    name: metadata_values.get(name, "")
+                    for name in (
+                        "duration_ms",
+                        "width",
+                        "height",
+                        "start_ms",
+                        "end_ms",
+                        "keyframe_ms",
+                    )
+                }
+                if any(
+                    not value.isascii() or not value.isdecimal()
+                    for value in integer_fields.values()
+                ):
+                    raise ValueError("video timestamps and dimensions must be integers")
+                duration_ms = int(integer_fields["duration_ms"])
+                start_ms = int(integer_fields["start_ms"])
+                end_ms = int(integer_fields["end_ms"])
+                keyframe_ms = int(integer_fields["keyframe_ms"])
+                if (
+                    not unit.title
+                    or metadata_values.get("media_type")
+                    not in {"video/mp4", "video/quicktime", "video/webm"}
+                    or not 1 <= duration_ms <= 86_400_000
+                    or not 1 <= int(integer_fields["width"]) <= 4_294_967_295
+                    or not 1 <= int(integer_fields["height"]) <= 4_294_967_295
+                    or int(integer_fields["width"]) > 32_768
+                    or int(integer_fields["height"]) > 32_768
+                    or not 0 <= start_ms < end_ms <= duration_ms
+                    or not start_ms <= keyframe_ms < end_ms
+                    or not metadata_values.get("caption")
+                    or not metadata_values.get("speech_model_id")
+                    or not metadata_values.get("speech_model_version")
+                    or not metadata_values.get("vision_model_id")
+                    or not metadata_values.get("vision_model_version")
+                ):
+                    raise ValueError("video index metadata and segment bounds are invalid")
             if unit.unit_id in unit_ids or unit.ordinal in ordinals:
                 raise ValueError("index unit IDs and ordinals must be unique")
             unit_ids.add(unit.unit_id)

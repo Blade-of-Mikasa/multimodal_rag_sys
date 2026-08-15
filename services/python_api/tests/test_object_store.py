@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from botocore.exceptions import ClientError
@@ -174,6 +176,32 @@ class S3ObjectStoreTest(unittest.TestCase):
 
         with self.assertRaises(ObjectTooLargeError):
             asyncio.run(self.store.download("objects/1", max_bytes=5))
+
+    def test_download_to_file_streams_and_hashes_without_buffering(self) -> None:
+        with TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "source.mp4"
+            result = asyncio.run(
+                self.store.download_to_file(
+                    "objects/1", destination=destination, max_bytes=6
+                )
+            )
+
+            self.assertEqual(b"abcdef", destination.read_bytes())
+            self.assertEqual(6, result.size_bytes)
+            self.assertEqual(
+                "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721",
+                result.content_sha256,
+            )
+
+        with TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "partial.mp4"
+            with self.assertRaises(ObjectTooLargeError):
+                asyncio.run(
+                    self.store.download_to_file(
+                        "objects/1", destination=destination, max_bytes=5
+                    )
+                )
+            self.assertFalse(destination.exists())
 
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ class RetrievalRoute:
             errors.append("timeout_ms must be between 100 and 30000")
         if (
             self.source_scope is SourceScope.LOCAL
-            and self.modality in {Modality.DOCUMENT, Modality.IMAGE}
+            and self.modality in {Modality.DOCUMENT, Modality.IMAGE, Modality.VIDEO}
         ):
             if not 1 <= len(self.dense_embedding) <= MAX_EMBEDDING_DIMENSION:
                 errors.append(

@@ -167,6 +167,21 @@ class SettingsTest(unittest.TestCase):
         settings = Settings(vision_api_key="vision-secret", _env_file=None)
         self.assertNotIn("vision-secret", repr(settings))
 
+    def test_video_pipeline_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(speech_endpoint_url="grpc://speech", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_audio_chunk_seconds=751, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_scene_threshold=1.0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_max_duration_seconds=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_max_dimension=256, _env_file=None)
+
+        settings = Settings(speech_api_key="speech-secret", _env_file=None)
+        self.assertNotIn("speech-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()

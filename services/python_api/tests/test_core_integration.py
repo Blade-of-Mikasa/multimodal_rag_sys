@@ -160,6 +160,75 @@ class CoreClientIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((), query_result.route_error_codes)
         self.assertFalse(query_result.partial_failure)
 
+    async def test_video_index_and_retrieval_cross_the_cpp_boundary(self) -> None:
+        result = await self.client.index_asset(
+            IndexAssetCommand(
+                request_id="req-m09-video-index",
+                tenant_id="tenant-m09",
+                acl_id="acl-m09",
+                asset_id="asset-video-m09",
+                asset_version_id="version-video-m09",
+                asset_version=1,
+                object_key="tenant-m09/asset-video-m09/v1/video.mp4",
+                units=(
+                    IndexUnit(
+                        unit_id="segment-m09",
+                        modality=Modality.VIDEO,
+                        content="Caption: Architecture talk\nTranscript: RRF fusion",
+                        title="Architecture talk",
+                        ordinal=0,
+                        page_number=0,
+                        content_sha256="d" * 64,
+                        dense_embedding=(1.0, 0.0),
+                        embedding_model_id="embedding-general",
+                        embedding_model_version="v1",
+                        metadata=(
+                            ("media_type", "video/mp4"),
+                            ("duration_ms", "90000"),
+                            ("width", "1920"),
+                            ("height", "1080"),
+                            ("start_ms", "0"),
+                            ("end_ms", "60000"),
+                            ("keyframe_ms", "0"),
+                            ("caption", "Architecture talk"),
+                            ("ocr_text", "MILVUS"),
+                            ("transcript", "RRF fusion"),
+                            ("speech_model_id", "speech-general"),
+                            ("speech_model_version", "v1"),
+                            ("vision_model_id", "vision-general"),
+                            ("vision_model_version", "v1"),
+                        ),
+                    ),
+                ),
+            )
+        )
+        self.assertTrue(result.collection_alias.startswith("rag_video_v1_"))
+
+        query_result = await self.client.execute_plan(
+            ExecutionPlan(
+                request_id="req-m09-video-query",
+                tenant_id="tenant-m09",
+                allowed_acl_ids=("acl-m09",),
+                routes=(
+                    RetrievalRoute(
+                        route_id="route-local-video",
+                        query="RRF fusion",
+                        source_scope=SourceScope.LOCAL,
+                        modality=Modality.VIDEO,
+                        top_k=5,
+                        timeout_ms=1_000,
+                        dense_embedding=(1.0, 0.0),
+                        embedding_model_id="embedding-general",
+                        embedding_model_version="v1",
+                    ),
+                ),
+            )
+        )
+
+        self.assertEqual(1, query_result.evidence_count)
+        self.assertEqual((), query_result.route_error_codes)
+        self.assertFalse(query_result.partial_failure)
+
 
 @unittest.skipUnless(CORE_TARGET, "requires a running M03 C++ Core")
 class CoreReadinessIntegrationTest(unittest.TestCase):

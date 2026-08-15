@@ -29,6 +29,17 @@ class ExecutionPlanTest(unittest.TestCase):
         )
         self.assertEqual([], plan.validate())
 
+        video_route = RetrievalRoute(
+            route_id="video-local",
+            query="jump to the retrieval explanation",
+            source_scope=SourceScope.LOCAL,
+            modality=Modality.VIDEO,
+            dense_embedding=(1.0, 0.0),
+            embedding_model_id="embedding-general",
+            embedding_model_version="v1",
+        )
+        self.assertEqual([], video_route.validate())
+
     def test_invalid_route(self) -> None:
         route = RetrievalRoute(
             route_id="route-1",

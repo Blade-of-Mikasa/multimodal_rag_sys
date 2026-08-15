@@ -88,6 +88,24 @@ class Settings(BaseSettings):
     image_max_pixels: int = 25_000_000
     image_model_max_dimension: int = 4_096
     image_model_max_bytes: int = 10_000_000
+    speech_endpoint_url: str = "http://127.0.0.1:8080/v1/audio/transcriptions"
+    speech_api_key: SecretStr | None = None
+    speech_model_id: str = "speech-to-text-general"
+    speech_model_version: str = "local"
+    speech_language: str | None = None
+    speech_timeout_seconds: float = 600.0
+    speech_max_segments_per_chunk: int = 10_000
+    ffmpeg_binary: str = "ffmpeg"
+    ffprobe_binary: str = "ffprobe"
+    video_command_timeout_seconds: float = 1_800.0
+    video_download_max_bytes: int = 2_000_000_000
+    video_max_duration_seconds: int = 14_400
+    video_max_pixels: int = 50_000_000
+    video_max_dimension: int = 16_384
+    video_audio_chunk_seconds: int = 480
+    video_scene_threshold: float = 0.35
+    video_keyframe_max_gap_seconds: int = 60
+    video_max_keyframes: int = 240
 
     @field_validator("api_prefix")
     @classmethod
@@ -267,6 +285,110 @@ class Settings(BaseSettings):
             raise ValueError(
                 "image_model_max_dimension must be between 512 and 16384"
             )
+        return value
+
+    @field_validator("speech_endpoint_url")
+    @classmethod
+    def validate_speech_endpoint(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("speech_endpoint_url must be an HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("speech_model_id", "speech_model_version")
+    @classmethod
+    def validate_speech_identity(cls, value: str) -> str:
+        if not value.strip() or len(value) > 256:
+            raise ValueError(
+                "speech model identity must contain between 1 and 256 characters"
+            )
+        return value
+
+    @field_validator("speech_language")
+    @classmethod
+    def validate_speech_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value or len(value) > 32 or not value.isascii():
+            raise ValueError("speech_language must be a short ASCII language code")
+        return value
+
+    @field_validator("speech_timeout_seconds", "video_command_timeout_seconds")
+    @classmethod
+    def validate_video_timeout(cls, value: float) -> float:
+        if not 1 <= value <= 3_600:
+            raise ValueError("video and speech timeouts must be between 1 and 3600")
+        return value
+
+    @field_validator("speech_max_segments_per_chunk")
+    @classmethod
+    def validate_speech_segment_limit(cls, value: int) -> int:
+        if not 1 <= value <= 100_000:
+            raise ValueError("speech segment limit must be between 1 and 100000")
+        return value
+
+    @field_validator("ffmpeg_binary", "ffprobe_binary")
+    @classmethod
+    def validate_video_binary(cls, value: str) -> str:
+        if not value.strip() or len(value) > 4_096 or "\x00" in value:
+            raise ValueError("video binary path must not be blank")
+        return value
+
+    @field_validator("video_download_max_bytes")
+    @classmethod
+    def validate_video_byte_limit(cls, value: int) -> int:
+        if not 1 <= value <= 5_000_000_000:
+            raise ValueError("video byte limit must be between 1 and 5000000000")
+        return value
+
+    @field_validator("video_max_duration_seconds")
+    @classmethod
+    def validate_video_duration(cls, value: int) -> int:
+        if not 1 <= value <= 86_400:
+            raise ValueError("video duration must be between 1 and 86400 seconds")
+        return value
+
+    @field_validator("video_max_pixels")
+    @classmethod
+    def validate_video_pixels(cls, value: int) -> int:
+        if not 1_000_000 <= value <= 268_435_456:
+            raise ValueError("video pixel limit must be between 1000000 and 268435456")
+        return value
+
+    @field_validator("video_max_dimension")
+    @classmethod
+    def validate_video_dimension(cls, value: int) -> int:
+        if not 512 <= value <= 32_768:
+            raise ValueError("video dimension limit must be between 512 and 32768")
+        return value
+
+    @field_validator("video_audio_chunk_seconds")
+    @classmethod
+    def validate_audio_chunk_duration(cls, value: int) -> int:
+        if not 30 <= value <= 750:
+            raise ValueError("audio chunks must be between 30 and 750 seconds")
+        return value
+
+    @field_validator("video_scene_threshold")
+    @classmethod
+    def validate_scene_threshold(cls, value: float) -> float:
+        if not 0.01 <= value <= 0.99:
+            raise ValueError("video scene threshold must be between 0.01 and 0.99")
+        return value
+
+    @field_validator("video_keyframe_max_gap_seconds")
+    @classmethod
+    def validate_keyframe_gap(cls, value: int) -> int:
+        if not 5 <= value <= 600:
+            raise ValueError("video keyframe gap must be between 5 and 600 seconds")
+        return value
+
+    @field_validator("video_max_keyframes")
+    @classmethod
+    def validate_keyframe_limit(cls, value: int) -> int:
+        if not 1 <= value <= 2_000:
+            raise ValueError("video keyframe limit must be between 1 and 2000")
         return value
 
     @field_validator("mysql_dsn")

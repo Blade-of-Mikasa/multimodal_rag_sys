@@ -25,6 +25,8 @@ MySQL 元数据表、事务边界和迁移方式见
 [`docs/document_milvus_retrieval.md`](docs/document_milvus_retrieval.md)。
 图片安全归一化、通用 Vision 适配与独立 Milvus 图片检索见
 [`docs/image_milvus_retrieval.md`](docs/image_milvus_retrieval.md)。
+视频流式下载、FFmpeg 场景切分、通用 ASR 与 Milvus 时间片检索见
+[`docs/video_milvus_retrieval.md`](docs/video_milvus_retrieval.md)。
 
 ## 初始化开发环境
 
@@ -43,6 +45,13 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 首次执行可能需要从源码编译 C++ 依赖，后续会复用仓库 `build/conan-home` 下的本地缓存。
 
 ## 验证
+
+验证视频流式下载、FFmpeg 命令契约、带时间戳 ASR、关键帧、Python/C++ 时间片
+闭环和 Milvus 视频适配器编译：
+
+```bash
+./scripts/verify_video_retrieval.sh
+```
 
 验证图片安全解码、Caption/OCR、通用 Embedding、统一 Kafka 路由、Python/C++
 闭环和 Milvus 图片适配器编译：
@@ -131,6 +140,6 @@ PYTHONPATH="${PWD}/build/generated/python" \
 所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、
 `RAG_DEBUG`、`RAG_CORE_GRPC_TARGET`、`RAG_CORE_GRPC_TIMEOUT_SECONDS`、
 `RAG_MYSQL_DSN`、`RAG_OBJECT_STORAGE_*`、`RAG_EMBEDDING_*` 和
-`RAG_VISION_*` 等环境变量覆盖默认配置。
+`RAG_VISION_*`、`RAG_SPEECH_*`、`RAG_VIDEO_*` 等环境变量覆盖默认配置。
 
 当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，用于本地开发与服务骨架验证；生产部署必须配合受控服务网络或补充 TLS。

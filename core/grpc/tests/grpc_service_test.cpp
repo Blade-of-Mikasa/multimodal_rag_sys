@@ -9,9 +9,12 @@
 int main() {
   multimodal::rag::core::InMemoryDocumentStore store;
   multimodal::rag::core::InMemoryImageStore image_store;
-  multimodal::rag::core::RagCoreServiceImpl service(&store, &image_store);
+  multimodal::rag::core::InMemoryVideoStore video_store;
+  multimodal::rag::core::RagCoreServiceImpl service(&store, &image_store,
+                                                     &video_store);
   multimodal::rag::core::IndexCoreServiceImpl index_service(&store,
-                                                             &image_store);
+                                                             &image_store,
+                                                             &video_store);
   grpc::ServerContext context;
 
   multimodal::rag::v1::HealthRequest health_request;
@@ -158,6 +161,78 @@ int main() {
           multimodal::rag::v1::MODALITY_IMAGE ||
       image_plan_response.evidence(0).metadata().at("ocr_text") != "OPEN") {
     std::cerr << "unexpected image ExecutePlan response\n";
+    return EXIT_FAILURE;
+  }
+
+  multimodal::rag::v1::IndexAssetRequest video_request;
+  video_request.set_request_id("req-video-index");
+  video_request.set_tenant_id("tenant-1");
+  video_request.set_acl_id("acl-a");
+  video_request.set_asset_id("asset-video");
+  video_request.set_asset_version_id("version-video");
+  video_request.set_asset_version(1);
+  video_request.set_object_key("tenant-1/asset-video/v1/video.mp4");
+  auto *video_unit = video_request.add_units();
+  video_unit->set_unit_id("segment-1");
+  video_unit->set_modality(multimodal::rag::v1::MODALITY_VIDEO);
+  video_unit->set_content(
+      "Caption: Architecture talk\nTranscript: dense sparse RRF fusion");
+  video_unit->set_title("Architecture talk");
+  video_unit->set_ordinal(0);
+  video_unit->set_content_sha256(std::string(64, 'd'));
+  video_unit->add_dense_embedding(1.0F);
+  video_unit->add_dense_embedding(0.0F);
+  video_unit->set_embedding_model_id("embedding-general");
+  video_unit->set_embedding_model_version("v1");
+  (*video_unit->mutable_metadata())["media_type"] = "video/mp4";
+  (*video_unit->mutable_metadata())["duration_ms"] = "90000";
+  (*video_unit->mutable_metadata())["width"] = "1920";
+  (*video_unit->mutable_metadata())["height"] = "1080";
+  (*video_unit->mutable_metadata())["start_ms"] = "0";
+  (*video_unit->mutable_metadata())["end_ms"] = "60000";
+  (*video_unit->mutable_metadata())["keyframe_ms"] = "0";
+  (*video_unit->mutable_metadata())["caption"] = "Architecture talk";
+  (*video_unit->mutable_metadata())["ocr_text"] = "MILVUS";
+  (*video_unit->mutable_metadata())["transcript"] = "dense sparse RRF fusion";
+  (*video_unit->mutable_metadata())["vision_model_id"] = "vision-general";
+  (*video_unit->mutable_metadata())["vision_model_version"] = "v1";
+  (*video_unit->mutable_metadata())["speech_model_id"] = "speech-general";
+  (*video_unit->mutable_metadata())["speech_model_version"] = "v1";
+  multimodal::rag::v1::IndexAssetResponse video_index_response;
+  const grpc::Status video_index_status = index_service.IndexAsset(
+      &context, &video_request, &video_index_response);
+  if (!video_index_status.ok() ||
+      video_index_response.indexed_unit_count() != 1 ||
+      !video_index_response.collection_alias().starts_with("rag_video_v1_")) {
+    std::cerr << "unexpected video IndexAsset response\n";
+    return EXIT_FAILURE;
+  }
+
+  multimodal::rag::v1::ExecutePlanRequest video_plan_request;
+  video_plan_request.set_request_id("req-video-query");
+  video_plan_request.set_tenant_id("tenant-1");
+  video_plan_request.add_allowed_acl_ids("acl-a");
+  auto *video_route = video_plan_request.add_routes();
+  video_route->set_route_id("video-local");
+  video_route->set_query("RRF fusion");
+  video_route->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_LOCAL);
+  video_route->set_modality(multimodal::rag::v1::MODALITY_VIDEO);
+  video_route->set_top_k(5);
+  video_route->set_timeout_ms(1000);
+  video_route->add_dense_embedding(1.0F);
+  video_route->add_dense_embedding(0.0F);
+  video_route->set_embedding_model_id("embedding-general");
+  video_route->set_embedding_model_version("v1");
+  multimodal::rag::v1::ExecutePlanResponse video_plan_response;
+  const grpc::Status video_plan_status = service.ExecutePlan(
+      &context, &video_plan_request, &video_plan_response);
+  if (!video_plan_status.ok() || video_plan_response.partial_failure() ||
+      video_plan_response.evidence_size() != 1 ||
+      video_plan_response.evidence(0).modality() !=
+          multimodal::rag::v1::MODALITY_VIDEO ||
+      video_plan_response.evidence(0).metadata().at("start_ms") != "0" ||
+      video_plan_response.evidence(0).metadata().at("end_ms") != "60000") {
+    std::cerr << "unexpected video ExecutePlan response\n";
     return EXIT_FAILURE;
   }
 
