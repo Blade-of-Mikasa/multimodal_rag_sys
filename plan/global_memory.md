@@ -29,7 +29,10 @@
   部署多个“只认识一种媒体”的竞争消费者，以免 Kafka 随机把消息分给错误处理器。
 - Embedding 模型 ID、版本和维度共同定义 collection 边界；模型升级新建 collection
   并回灌切流，禁止把不同语义空间的向量混入同一集合。
-- 联网检索：统一 `SearchProvider` 接口；传统 Bing Search API 已退役，不作为可直接调用的默认实现。
+- 联网检索：统一 `SearchProvider` 接口；传统 Bing Search API 已退役，默认适配
+  Microsoft Foundry Responses API 的 `bing_grounding`。Foundry 只暴露 Grounded
+  文本和 URL citation、不暴露 Bing 原始结果，因此引用页面由应用独立安全抓取；
+  来源 URL 与 Bing 查询 URL 必须分开保留供前端展示。
 - 原始文件只进入对象存储；Kafka 消息只传 `asset_id`、`version`、`object_key` 等任务元数据。
 - 代码集成：每个模块使用独立 `codex/...` 分支；模块分支推送后创建 MR，后续修正继续推送同一 MR，Review 通过后再合并，禁止直接推送 `main`；PR 描述、变更摘要、验证结果和 Review 重点统一使用中文。
 
@@ -58,20 +61,20 @@
 | M07 | 文档入库与 Milvus 检索 | 已完成（随 PR #7 合入 M06 分支） | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
 | M08 | 图片入库与召回 | 已完成（随 PR #8 合入 M06 分支） | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | Review 中 | ASR、场景切分、关键帧与时间片段召回完成 |
-| M10 | 联网搜索与网页抽取 | 待开始 | SearchProvider、正文抽取、来源时间与失败降级完成 |
+| M10 | 联网搜索与网页抽取 | Review 中 | SearchProvider、正文抽取、来源时间与失败降级完成 |
 | M11 | 证据治理与上下文构建 | 待开始 | 去重、冲突规则、Token 预算与 citation 映射完成 |
 | M12 | 最终生成与前端问答 | 待开始 | 基于证据生成、流式回答和引用展示完成 |
 | M13 | 评估与可观测性 | 待开始 | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
 
 ## 4. 当前工作快照
 
-- 当前模块：M09 视频入库与召回开发、文档和验证已完成，
-  [PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9) Review 中。
-  [PR #8](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/8) 已合入
-  `codex/m06-kafka-ingestion`；[PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6)
-  仍是 M06+M07+M08 进入 `main` 的集成路径。
-- 当前分支：`codex/m09-video-ingestion-retrieval`，目标分支为
-  `codex/m06-kafka-ingestion`；PR #6 合入主线后应把 M09 PR base 切回 `main`。
+- 当前模块：M10 联网搜索与网页抽取开发、文档和验证已完成，
+  [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10) Review 中。
+  [PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9) 仍是 M09 进入
+  当前集成分支的父 PR。
+- 当前分支：`codex/m10-web-search-extraction`，目标分支为
+  `codex/m09-video-ingestion-retrieval`；父 PR 合入后应及时把 M10 PR base 调整到
+  实际包含 M09 的集成分支或 `main`。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
@@ -103,19 +106,26 @@
 - 视频检索基线：C++ 内存/Milvus `VideoStore` 保存时间片范围、关键帧、三类模型
   溯源和组合文本；独立 `rag_video_v1_*` collection 使用 HNSW/COSINE、服务端
   BM25、RRF 和 tenant/ACL 前置过滤，Video Evidence 携带播放器跳转所需毫秒范围。
+- 联网搜索基线：Python `SearchProvider` 默认适配 Microsoft Foundry
+  `bing_grounding`，通过 Responses API 获取 Grounded 文本、Bing 查询 URL 和有序
+  URL citation；认证依赖可替换 `AccessTokenProvider`。不把模型生成片段冒充网页
+  摘要，引用页面由应用自行抓取正文。
+- 网页抽取基线：`SafeWebFetcher` 只允许公网 HTTP(S) 80/443，拒绝 URL 凭据、私网/
+  链路本地/保留地址和 HTTPS 降级；实际 aiohttp resolver 校验全部 DNS 答案，关闭
+  自动跳转并逐跳复核，限制 HTML 类型、超时、跳转和解压后字节数。Trafilatura
+  2.1.0 提取正文；显式 Meta/JSON-LD/`time` 与 HTTP 时间会保留来源、精度、原值及
+  时区假定，`fetched_at` 独立保存。单页失败返回 `citation_only`，不拖垮整次搜索。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：`./scripts/verify_video_retrieval.sh` 通过；全量 106 项 Python 测试中
-  101 项通过、5 项仅因常规发现阶段未启动 Core 跳过，脚本启动真实 C++ Core 后
-  5 项 Python→C++ 进程级测试全部通过（含视频索引与 VIDEO route 召回）；普通与
-  `RAG_ENABLE_MILVUS=ON` 两套 C++ 构建均 6/6 测试通过，官方 Milvus C++ SDK、
-  文档/图片/视频适配器和服务端完成编译。`pip check` 与 `git diff --check` 通过。
-  开发机未安装 FFmpeg，真实编解码 smoke 明确跳过；命令、时间戳和覆盖预算由 fake
-  process 单测验证。开发机也未启动真实 Milvus/模型网关/Kafka/MySQL，因此视频
-  collection 在线创建、实际编解码、供应商 ASR/Vision 兼容性及故障注入仍需集成环境验证。
-- 下一步：Review [PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)；
-  PR #6 合入 `main` 后将 M09 PR base 切回 `main`。
-  M09 合并后开始 M10 联网搜索与网页抽取。
+- 最近验证：`./scripts/verify_web_search.sh` 通过；M10 专项 22 项测试全部通过；全量
+  119 项 Python 测试中 114 项通过、5 项仅因常规发现阶段未启动 Core 跳过。
+  `pip check`、`git diff --check` 通过。本模块未修改 C++，按规则未启动或跟踪
+  Codebase Pipeline 的人工编译阶段。开发机未配置 Azure Foundry 项目、模型部署、
+  Bing connection 或 Entra Token，因此真实 Bing Grounding 调用与供应商展示要求
+  仍需集成环境验证；当前链路也不是批量爬虫，站点级 robots.txt 缓存和采集授权需在
+  启用批量采集前另行实现与评审。
+- 下一步：Review [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)；
+  父 PR 合入后调整 M10 base。M10 合并后开始 M11 证据治理与上下文构建。
 
 ## 5. 更新日志
 
@@ -150,3 +160,9 @@
   Caption/OCR/Transcript 时间片，以及 C++ 内存/Milvus `VideoStore`；Video
   Evidence 返回可播放区间。106 项 Python 测试、5 项真实 Python→C++ 集成测试及
   普通/Milvus-enabled 两套 6 项 C++ 测试通过；本机因未安装 FFmpeg 跳过真实编解码。
+- 2026-08-20：M10 开发完成，[PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
+  Review 中。新增厂商无关 `SearchProvider`、Microsoft Foundry `bing_grounding`
+  Responses 适配、公网 DNS/IP 与逐跳重定向 SSRF 防护、有界 HTML 抓取、Trafilatura
+  正文提取、显式来源时间 provenance 和逐来源 `citation_only` 降级。M10 专项 22 项、
+  全量 119 项 Python 测试及 `pip check`、`git diff --check` 通过；真实 Foundry/Bing
+  调用需在具备 Azure 连接和 Entra Token 的集成环境验证。

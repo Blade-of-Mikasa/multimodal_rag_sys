@@ -12,4 +12,5 @@ pydantic-settings==2.15.0
 Pillow==12.3.0
 pypdf==6.14.2
 SQLAlchemy[asyncio]==2.0.52
+trafilatura==2.1.0
 uvicorn==0.52.1
