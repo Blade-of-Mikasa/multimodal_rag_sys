@@ -239,6 +239,7 @@ InMemoryImageStore::HybridSearch(const ImageQuery &query) {
                     .caption = image.caption,
                     .ocr_text = image.ocr_text,
                     .content = image.content,
+                    .content_sha256 = image.content_sha256,
                     .score = candidates[index].fused});
   }
   return hits;

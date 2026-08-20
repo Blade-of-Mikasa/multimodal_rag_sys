@@ -66,6 +66,7 @@ struct VideoHit {
   std::string ocr_text;
   std::string transcript;
   std::string content;
+  std::string content_sha256;
   double score{0.0};
 };
 

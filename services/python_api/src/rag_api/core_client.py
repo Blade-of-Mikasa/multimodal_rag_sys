@@ -29,8 +29,40 @@ class CorePlanResult:
     request_id: str
     context: str
     evidence_count: int
+    citations: tuple[CoreCitation, ...]
+    conflicts: tuple[CoreConflict, ...]
+    evidence_decisions: tuple[CoreEvidenceDecision, ...]
+    context_token_count: int
+    context_truncated: bool
+    token_count_method: str
     route_error_codes: tuple[str, ...]
     partial_failure: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CoreCitation:
+    citation_id: int
+    evidence_id: str
+    source: str
+    url: str
+    title: str
+    modality: Modality
+    metadata: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CoreConflict:
+    evidence_ids: tuple[str, ...]
+    type: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class CoreEvidenceDecision:
+    evidence_id: str
+    disposition: str
+    representative_evidence_id: str
+    reason: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +202,25 @@ class GrpcCoreClient:
                 )
                 for route in plan.routes
             ],
+            external_evidence=[
+                self._messages.Evidence(
+                    evidence_id=evidence.evidence_id,
+                    content=evidence.content,
+                    modality=int(evidence.modality),
+                    source_scope=int(evidence.source_scope),
+                    title=evidence.title,
+                    source=evidence.source,
+                    url=evidence.url,
+                    published_at_unix_ms=evidence.published_at_unix_ms,
+                    retrieved_at_unix_ms=evidence.retrieved_at_unix_ms,
+                    score=evidence.score,
+                    metadata=dict(evidence.metadata),
+                    content_sha256=evidence.content_sha256,
+                )
+                for evidence in plan.external_evidence
+            ],
+            context_token_budget=plan.context_token_budget,
+            max_evidence_tokens=plan.max_evidence_tokens,
         )
         try:
             response = await stub.ExecutePlan(
@@ -178,6 +229,10 @@ class GrpcCoreClient:
                 wait_for_ready=True,
             )
         except grpc.aio.AioRpcError as error:
+            if error.code() is grpc.StatusCode.INVALID_ARGUMENT:
+                raise ValueError(
+                    f"C++ Core rejected ExecutePlan: {error.details()}"
+                ) from error
             raise CoreUnavailableError(
                 f"C++ Core ExecutePlan failed: {error.code().name}"
             ) from error
@@ -185,6 +240,40 @@ class GrpcCoreClient:
             request_id=response.request_id,
             context=response.context,
             evidence_count=len(response.evidence),
+            citations=tuple(
+                CoreCitation(
+                    citation_id=citation.citation_id,
+                    evidence_id=citation.evidence_id,
+                    source=citation.source,
+                    url=citation.url,
+                    title=citation.title,
+                    modality=Modality(citation.modality),
+                    metadata=tuple(sorted(citation.metadata.items())),
+                )
+                for citation in response.citations
+            ),
+            conflicts=tuple(
+                CoreConflict(
+                    evidence_ids=tuple(conflict.evidence_ids),
+                    type=conflict.type,
+                    reason=conflict.reason,
+                )
+                for conflict in response.conflicts
+            ),
+            evidence_decisions=tuple(
+                CoreEvidenceDecision(
+                    evidence_id=decision.evidence_id,
+                    disposition=decision.disposition,
+                    representative_evidence_id=(
+                        decision.representative_evidence_id
+                    ),
+                    reason=decision.reason,
+                )
+                for decision in response.evidence_decisions
+            ),
+            context_token_count=response.context_token_count,
+            context_truncated=response.context_truncated,
+            token_count_method=response.token_count_method,
             route_error_codes=tuple(error.code for error in response.route_errors),
             partial_failure=response.partial_failure,
         )

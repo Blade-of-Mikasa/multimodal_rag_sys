@@ -17,6 +17,7 @@ from .domain import (
     WebSource,
 )
 from .service import WebSearchService
+from .evidence import web_bundle_to_evidence
 
 __all__ = [
     "ExtractionStatus",
@@ -34,4 +35,5 @@ __all__ = [
     "WebSearchBundle",
     "WebSearchService",
     "WebSource",
+    "web_bundle_to_evidence",
 ]

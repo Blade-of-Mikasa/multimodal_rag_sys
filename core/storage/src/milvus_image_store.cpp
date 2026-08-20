@@ -275,6 +275,7 @@ public:
         .AddOutputField(kCaption)
         .AddOutputField(kOcrText)
         .AddOutputField(kContent)
+        .AddOutputField(kContentSha256)
         .WithConsistencyLevel(milvus::ConsistencyLevel::BOUNDED);
 
     milvus::HybridSearchResponse response;
@@ -306,6 +307,7 @@ public:
             .caption = row.at(kCaption).get<std::string>(),
             .ocr_text = row.at(kOcrText).get<std::string>(),
             .content = row.at(kContent).get<std::string>(),
+            .content_sha256 = row.at(kContentSha256).get<std::string>(),
             .score = scores[index],
         });
       }

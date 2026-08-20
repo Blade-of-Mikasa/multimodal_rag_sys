@@ -244,6 +244,7 @@ public:
         .AddOutputField(kPageNumber)
         .AddOutputField(kTitle)
         .AddOutputField(kContent)
+        .AddOutputField(kContentSha256)
         .WithConsistencyLevel(milvus::ConsistencyLevel::BOUNDED);
 
     milvus::HybridSearchResponse response;
@@ -274,6 +275,7 @@ public:
             .page_number = row.at(kPageNumber).get<std::uint32_t>(),
             .title = row.at(kTitle).get<std::string>(),
             .content = row.at(kContent).get<std::string>(),
+            .content_sha256 = row.at(kContentSha256).get<std::string>(),
             .score = scores[index],
         });
       }

@@ -52,6 +52,7 @@ struct ImageHit {
   std::string caption;
   std::string ocr_text;
   std::string content;
+  std::string content_sha256;
   double score{0.0};
 };
 

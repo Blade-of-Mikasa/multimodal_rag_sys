@@ -1,8 +1,10 @@
 #include "rag_core/grpc_service.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -59,6 +61,95 @@ bool ParseUint64(const std::string &value, std::uint64_t &output,
   return true;
 }
 
+Modality ToDomainModality(const multimodal::rag::v1::Modality modality) {
+  switch (modality) {
+  case multimodal::rag::v1::MODALITY_DOCUMENT:
+    return Modality::kDocument;
+  case multimodal::rag::v1::MODALITY_IMAGE:
+    return Modality::kImage;
+  case multimodal::rag::v1::MODALITY_VIDEO:
+    return Modality::kVideo;
+  case multimodal::rag::v1::MODALITY_UNSPECIFIED:
+  default:
+    return Modality::kUnspecified;
+  }
+}
+
+SourceScope
+ToDomainSourceScope(const multimodal::rag::v1::SourceScope source_scope) {
+  switch (source_scope) {
+  case multimodal::rag::v1::SOURCE_SCOPE_LOCAL:
+    return SourceScope::kLocal;
+  case multimodal::rag::v1::SOURCE_SCOPE_WEB:
+    return SourceScope::kWeb;
+  case multimodal::rag::v1::SOURCE_SCOPE_UNSPECIFIED:
+  default:
+    return SourceScope::kUnspecified;
+  }
+}
+
+multimodal::rag::v1::Modality ToProtoModality(const Modality modality) {
+  switch (modality) {
+  case Modality::kDocument:
+    return multimodal::rag::v1::MODALITY_DOCUMENT;
+  case Modality::kImage:
+    return multimodal::rag::v1::MODALITY_IMAGE;
+  case Modality::kVideo:
+    return multimodal::rag::v1::MODALITY_VIDEO;
+  case Modality::kUnspecified:
+  default:
+    return multimodal::rag::v1::MODALITY_UNSPECIFIED;
+  }
+}
+
+multimodal::rag::v1::SourceScope
+ToProtoSourceScope(const SourceScope source_scope) {
+  switch (source_scope) {
+  case SourceScope::kLocal:
+    return multimodal::rag::v1::SOURCE_SCOPE_LOCAL;
+  case SourceScope::kWeb:
+    return multimodal::rag::v1::SOURCE_SCOPE_WEB;
+  case SourceScope::kUnspecified:
+  default:
+    return multimodal::rag::v1::SOURCE_SCOPE_UNSPECIFIED;
+  }
+}
+
+EvidenceItem ToEvidenceItem(const multimodal::rag::v1::Evidence &evidence) {
+  return {
+      .evidence_id = evidence.evidence_id(),
+      .content = evidence.content(),
+      .modality = ToDomainModality(evidence.modality()),
+      .source_scope = ToDomainSourceScope(evidence.source_scope()),
+      .title = evidence.title(),
+      .source = evidence.source(),
+      .url = evidence.url(),
+      .published_at_unix_ms = evidence.published_at_unix_ms(),
+      .retrieved_at_unix_ms = evidence.retrieved_at_unix_ms(),
+      .score = evidence.score(),
+      .metadata = std::map<std::string, std::string>(evidence.metadata().begin(),
+                                                    evidence.metadata().end()),
+      .content_sha256 = evidence.content_sha256(),
+  };
+}
+
+void SetEvidence(const EvidenceItem &source,
+                 multimodal::rag::v1::Evidence *target) {
+  target->set_evidence_id(source.evidence_id);
+  target->set_content(source.content);
+  target->set_modality(ToProtoModality(source.modality));
+  target->set_source_scope(ToProtoSourceScope(source.source_scope));
+  target->set_title(source.title);
+  target->set_source(source.source);
+  target->set_url(source.url);
+  target->set_published_at_unix_ms(source.published_at_unix_ms);
+  target->set_retrieved_at_unix_ms(source.retrieved_at_unix_ms);
+  target->set_score(source.score);
+  target->set_content_sha256(source.content_sha256);
+  target->mutable_metadata()->insert(source.metadata.begin(),
+                                     source.metadata.end());
+}
+
 } // namespace
 
 RagCoreServiceImpl::RagCoreServiceImpl(DocumentStore *document_store,
@@ -86,14 +177,43 @@ grpc::Status RagCoreServiceImpl::ExecutePlan(
     multimodal::rag::v1::ExecutePlanResponse *response) {
   static_cast<void>(context);
 
-  if (request->request_id().empty()) {
+  if (request->request_id().empty() || request->tenant_id().empty()) {
     return {
-        grpc::StatusCode::INVALID_ARGUMENT, "request_id must not be empty",
+        grpc::StatusCode::INVALID_ARGUMENT,
+        "request_id and tenant_id must not be empty",
     };
+  }
+  if (request->routes_size() > static_cast<int>(kMaxRouteCount)) {
+    return {grpc::StatusCode::INVALID_ARGUMENT,
+            "route count must not exceed 6"};
+  }
+  if (std::any_of(request->routes().begin(), request->routes().end(),
+                  [](const auto &route) {
+                    return route.source_scope() !=
+                           multimodal::rag::v1::SOURCE_SCOPE_LOCAL;
+                  })) {
+    return {grpc::StatusCode::INVALID_ARGUMENT,
+            "retrieval routes must use LOCAL; pass fetched web sources as "
+            "external_evidence"};
+  }
+
+  const bool has_local_route = !request->routes().empty();
+  if (has_local_route && request->allowed_acl_ids().empty()) {
+    return {grpc::StatusCode::INVALID_ARGUMENT,
+            "allowed_acl_ids must not be empty for local retrieval"};
   }
 
   response->set_request_id(request->request_id());
-  response->set_context("");
+  std::vector<EvidenceItem> evidence_items;
+  evidence_items.reserve(static_cast<std::size_t>(request->external_evidence_size()) +
+                         static_cast<std::size_t>(request->routes_size()) * 10U);
+  for (const auto &evidence : request->external_evidence()) {
+    if (evidence.source_scope() != multimodal::rag::v1::SOURCE_SCOPE_WEB) {
+      return {grpc::StatusCode::INVALID_ARGUMENT,
+              "external_evidence must use WEB source_scope"};
+    }
+    evidence_items.push_back(ToEvidenceItem(evidence));
+  }
   for (const auto &route : request->routes()) {
     if (route.source_scope() != multimodal::rag::v1::SOURCE_SCOPE_LOCAL) {
       continue;
@@ -122,20 +242,21 @@ grpc::Status RagCoreServiceImpl::ExecutePlan(
       };
       try {
         for (const auto &hit : document_store_->HybridSearch(query)) {
-          auto *evidence = response->add_evidence();
-          evidence->set_evidence_id(hit.chunk_id);
-          evidence->set_content(hit.content);
-          evidence->set_modality(multimodal::rag::v1::MODALITY_DOCUMENT);
-          evidence->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_LOCAL);
-          evidence->set_title(hit.title);
-          evidence->set_source(hit.object_key);
-          evidence->set_score(hit.score);
-          auto *metadata = evidence->mutable_metadata();
-          (*metadata)["asset_id"] = hit.asset_id;
-          (*metadata)["asset_version_id"] = hit.asset_version_id;
-          (*metadata)["ordinal"] = std::to_string(hit.ordinal);
-          (*metadata)["page_number"] = std::to_string(hit.page_number);
-          (*metadata)["route_id"] = route.route_id();
+          evidence_items.push_back(EvidenceItem{
+              .evidence_id = hit.chunk_id,
+              .content = hit.content,
+              .modality = Modality::kDocument,
+              .source_scope = SourceScope::kLocal,
+              .title = hit.title,
+              .source = hit.object_key,
+              .score = hit.score,
+              .metadata = {{"asset_id", hit.asset_id},
+                           {"asset_version_id", hit.asset_version_id},
+                           {"ordinal", std::to_string(hit.ordinal)},
+                           {"page_number", std::to_string(hit.page_number)},
+                           {"route_id", route.route_id()}},
+              .content_sha256 = hit.content_sha256,
+          });
         }
       } catch (const DocumentStoreError &store_error) {
         auto *error = response->add_route_errors();
@@ -175,22 +296,23 @@ grpc::Status RagCoreServiceImpl::ExecutePlan(
       };
       try {
         for (const auto &hit : image_store_->HybridSearch(query)) {
-          auto *evidence = response->add_evidence();
-          evidence->set_evidence_id(hit.image_id);
-          evidence->set_content(hit.content);
-          evidence->set_modality(multimodal::rag::v1::MODALITY_IMAGE);
-          evidence->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_LOCAL);
-          evidence->set_title(hit.caption);
-          evidence->set_source(hit.object_key);
-          evidence->set_score(hit.score);
-          auto *metadata = evidence->mutable_metadata();
-          (*metadata)["asset_id"] = hit.asset_id;
-          (*metadata)["asset_version_id"] = hit.asset_version_id;
-          (*metadata)["media_type"] = hit.media_type;
-          (*metadata)["width"] = std::to_string(hit.width);
-          (*metadata)["height"] = std::to_string(hit.height);
-          (*metadata)["ocr_text"] = hit.ocr_text;
-          (*metadata)["route_id"] = route.route_id();
+          evidence_items.push_back(EvidenceItem{
+              .evidence_id = hit.image_id,
+              .content = hit.content,
+              .modality = Modality::kImage,
+              .source_scope = SourceScope::kLocal,
+              .title = hit.caption,
+              .source = hit.object_key,
+              .score = hit.score,
+              .metadata = {{"asset_id", hit.asset_id},
+                           {"asset_version_id", hit.asset_version_id},
+                           {"media_type", hit.media_type},
+                           {"width", std::to_string(hit.width)},
+                           {"height", std::to_string(hit.height)},
+                           {"ocr_text", hit.ocr_text},
+                           {"route_id", route.route_id()}},
+              .content_sha256 = hit.content_sha256,
+          });
         }
       } catch (const ImageStoreError &store_error) {
         auto *error = response->add_route_errors();
@@ -223,28 +345,29 @@ grpc::Status RagCoreServiceImpl::ExecutePlan(
     };
     try {
       for (const auto &hit : video_store_->HybridSearch(query)) {
-        auto *evidence = response->add_evidence();
-        evidence->set_evidence_id(hit.segment_id);
-        evidence->set_content(hit.content);
-        evidence->set_modality(multimodal::rag::v1::MODALITY_VIDEO);
-        evidence->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_LOCAL);
-        evidence->set_title(hit.caption);
-        evidence->set_source(hit.object_key);
-        evidence->set_score(hit.score);
-        auto *metadata = evidence->mutable_metadata();
-        (*metadata)["asset_id"] = hit.asset_id;
-        (*metadata)["asset_version_id"] = hit.asset_version_id;
-        (*metadata)["ordinal"] = std::to_string(hit.ordinal);
-        (*metadata)["media_type"] = hit.media_type;
-        (*metadata)["duration_ms"] = std::to_string(hit.duration_ms);
-        (*metadata)["width"] = std::to_string(hit.width);
-        (*metadata)["height"] = std::to_string(hit.height);
-        (*metadata)["start_ms"] = std::to_string(hit.start_ms);
-        (*metadata)["end_ms"] = std::to_string(hit.end_ms);
-        (*metadata)["keyframe_ms"] = std::to_string(hit.keyframe_ms);
-        (*metadata)["ocr_text"] = hit.ocr_text;
-        (*metadata)["transcript"] = hit.transcript;
-        (*metadata)["route_id"] = route.route_id();
+        evidence_items.push_back(EvidenceItem{
+            .evidence_id = hit.segment_id,
+            .content = hit.content,
+            .modality = Modality::kVideo,
+            .source_scope = SourceScope::kLocal,
+            .title = hit.caption,
+            .source = hit.object_key,
+            .score = hit.score,
+            .metadata = {{"asset_id", hit.asset_id},
+                         {"asset_version_id", hit.asset_version_id},
+                         {"ordinal", std::to_string(hit.ordinal)},
+                         {"media_type", hit.media_type},
+                         {"duration_ms", std::to_string(hit.duration_ms)},
+                         {"width", std::to_string(hit.width)},
+                         {"height", std::to_string(hit.height)},
+                         {"start_ms", std::to_string(hit.start_ms)},
+                         {"end_ms", std::to_string(hit.end_ms)},
+                         {"keyframe_ms", std::to_string(hit.keyframe_ms)},
+                         {"ocr_text", hit.ocr_text},
+                         {"transcript", hit.transcript},
+                         {"route_id", route.route_id()}},
+            .content_sha256 = hit.content_sha256,
+        });
       }
     } catch (const VideoStoreError &store_error) {
       auto *error = response->add_route_errors();
@@ -253,6 +376,52 @@ grpc::Status RagCoreServiceImpl::ExecutePlan(
       error->set_message(store_error.what());
       error->set_retryable(store_error.retryable());
     }
+  }
+
+  EvidenceContextOptions options;
+  if (request->context_token_budget() != 0) {
+    options.context_token_budget = request->context_token_budget();
+  }
+  if (request->max_evidence_tokens() != 0) {
+    options.max_evidence_tokens = request->max_evidence_tokens();
+  }
+  try {
+    const auto result = evidence_processor_.Process(evidence_items, options);
+    for (const auto &evidence : result.evidence) {
+      SetEvidence(evidence, response->add_evidence());
+    }
+    for (const auto &conflict : result.conflicts) {
+      auto *target = response->add_conflicts();
+      target->mutable_evidence_ids()->Add(conflict.evidence_ids.begin(),
+                                          conflict.evidence_ids.end());
+      target->set_type(conflict.type);
+      target->set_reason(conflict.reason);
+    }
+    response->set_context(result.context);
+    for (const auto &citation : result.citations) {
+      auto *target = response->add_citations();
+      target->set_citation_id(citation.citation_id);
+      target->set_evidence_id(citation.evidence_id);
+      target->set_source(citation.source);
+      target->set_url(citation.url);
+      target->set_title(citation.title);
+      target->set_modality(ToProtoModality(citation.modality));
+      target->mutable_metadata()->insert(citation.metadata.begin(),
+                                         citation.metadata.end());
+    }
+    for (const auto &decision : result.decisions) {
+      auto *target = response->add_evidence_decisions();
+      target->set_evidence_id(decision.evidence_id);
+      target->set_disposition(decision.disposition);
+      target->set_representative_evidence_id(
+          decision.representative_evidence_id);
+      target->set_reason(decision.reason);
+    }
+    response->set_context_token_count(result.context_token_count);
+    response->set_context_truncated(result.context_truncated);
+    response->set_token_count_method(result.token_count_method);
+  } catch (const EvidenceProcessorError &error) {
+    return {grpc::StatusCode::INVALID_ARGUMENT, error.what()};
   }
   response->set_partial_failure(response->route_errors_size() > 0);
   return grpc::Status::OK;

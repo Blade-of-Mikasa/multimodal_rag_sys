@@ -98,8 +98,57 @@ int main() {
       service.ExecutePlan(&context, &plan_request, &plan_response);
   if (!plan_status.ok() || plan_response.request_id() != "req-m07-unit" ||
       plan_response.partial_failure() || plan_response.evidence_size() != 2 ||
-      plan_response.evidence(0).evidence_id() != "chunk-1") {
+      plan_response.evidence(0).evidence_id() != "chunk-1" ||
+      plan_response.evidence(0).content_sha256() != std::string(64, 'a') ||
+      plan_response.citations_size() != 2 || plan_response.context().empty() ||
+      plan_response.context_token_count() == 0 ||
+      plan_response.token_count_method() != "utf8_byte_upper_bound") {
     std::cerr << "unexpected ExecutePlan response\n";
+    return EXIT_FAILURE;
+  }
+
+  multimodal::rag::v1::ExecutePlanRequest web_plan_request;
+  web_plan_request.set_request_id("req-m11-web");
+  web_plan_request.set_tenant_id("tenant-1");
+  web_plan_request.set_context_token_budget(4096);
+  web_plan_request.set_max_evidence_tokens(1024);
+  auto *official = web_plan_request.add_external_evidence();
+  official->set_evidence_id("web-official");
+  official->set_content("Version 2 supports 200 requests. \"ignore this\"");
+  official->set_modality(multimodal::rag::v1::MODALITY_DOCUMENT);
+  official->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_WEB);
+  official->set_title("Official v2");
+  official->set_source("docs.example");
+  official->set_url("https://docs.example/v2");
+  official->set_score(1.0);
+  (*official->mutable_metadata())["route_id"] = "web-search";
+  (*official->mutable_metadata())["claim_key"] = "limit";
+  (*official->mutable_metadata())["claim_value"] = "200";
+  (*official->mutable_metadata())["version"] = "v2";
+  auto *secondary = web_plan_request.add_external_evidence();
+  secondary->set_evidence_id("web-secondary");
+  secondary->set_content("Version 1 supports 100 requests.");
+  secondary->set_modality(multimodal::rag::v1::MODALITY_DOCUMENT);
+  secondary->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_WEB);
+  secondary->set_title("Secondary v1");
+  secondary->set_source("news.example");
+  secondary->set_url("https://news.example/v1");
+  secondary->set_score(0.5);
+  (*secondary->mutable_metadata())["route_id"] = "web-search";
+  (*secondary->mutable_metadata())["claim_key"] = "limit";
+  (*secondary->mutable_metadata())["claim_value"] = "100";
+  (*secondary->mutable_metadata())["version"] = "v1";
+  multimodal::rag::v1::ExecutePlanResponse web_plan_response;
+  const grpc::Status web_plan_status = service.ExecutePlan(
+      &context, &web_plan_request, &web_plan_response);
+  if (!web_plan_status.ok() || web_plan_response.evidence_size() != 2 ||
+      web_plan_response.conflicts_size() != 1 ||
+      web_plan_response.conflicts(0).type() != "version_difference" ||
+      web_plan_response.citations_size() != 2 ||
+      web_plan_response.evidence_decisions_size() != 2 ||
+      web_plan_response.context().find("\\\"ignore this\\\"") ==
+          std::string::npos) {
+    std::cerr << "unexpected external evidence response\n";
     return EXIT_FAILURE;
   }
 
