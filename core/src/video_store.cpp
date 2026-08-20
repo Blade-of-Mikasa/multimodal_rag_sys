@@ -296,6 +296,7 @@ InMemoryVideoStore::HybridSearch(const VideoQuery &query) {
                     .ocr_text = segment.ocr_text,
                     .transcript = segment.transcript,
                     .content = segment.content,
+                    .content_sha256 = segment.content_sha256,
                     .score = candidates[index].fused});
   }
   return hits;

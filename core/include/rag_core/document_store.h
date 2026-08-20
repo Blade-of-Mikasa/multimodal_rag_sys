@@ -46,6 +46,7 @@ struct DocumentHit {
   std::uint32_t page_number{0};
   std::string title;
   std::string content;
+  std::string content_sha256;
   double score{0.0};
 };
 

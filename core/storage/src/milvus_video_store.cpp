@@ -309,6 +309,7 @@ public:
         .AddOutputField(kOcrText)
         .AddOutputField(kTranscript)
         .AddOutputField(kContent)
+        .AddOutputField(kContentSha256)
         .WithConsistencyLevel(milvus::ConsistencyLevel::BOUNDED);
 
     milvus::HybridSearchResponse response;
@@ -345,6 +346,7 @@ public:
             .ocr_text = row.at(kOcrText).get<std::string>(),
             .transcript = row.at(kTranscript).get<std::string>(),
             .content = row.at(kContent).get<std::string>(),
+            .content_sha256 = row.at(kContentSha256).get<std::string>(),
             .score = scores[index],
         });
       }

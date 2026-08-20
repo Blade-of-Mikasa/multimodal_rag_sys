@@ -4,6 +4,7 @@
 
 #include "rag_core.grpc.pb.h"
 #include "rag_core/document_store.h"
+#include "rag_core/evidence.h"
 #include "rag_core/image_store.h"
 #include "rag_core/video_store.h"
 
@@ -32,6 +33,7 @@ private:
   DocumentStore *document_store_;
   ImageStore *image_store_;
   VideoStore *video_store_;
+  EvidenceProcessor evidence_processor_;
 };
 
 class IndexCoreServiceImpl final

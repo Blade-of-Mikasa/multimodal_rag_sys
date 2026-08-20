@@ -257,6 +257,7 @@ InMemoryDocumentStore::HybridSearch(const DocumentQuery &query) {
                     .page_number = candidate.chunk->page_number,
                     .title = candidate.chunk->title,
                     .content = candidate.chunk->content,
+                    .content_sha256 = candidate.chunk->content_sha256,
                     .score = candidate.fused});
   }
   return hits;

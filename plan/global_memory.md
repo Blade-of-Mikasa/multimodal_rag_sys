@@ -33,6 +33,11 @@
   Microsoft Foundry Responses API 的 `bing_grounding`。Foundry 只暴露 Grounded
   文本和 URL citation、不暴露 Bing 原始结果，因此引用页面由应用独立安全抓取；
   来源 URL 与 Bing 查询 URL 必须分开保留供前端展示。
+- 证据治理：Python 只把已安全获取的公网来源作为 `external_evidence(WEB)` 传入；
+  C++ 将其与 tenant/ACL 前置过滤后的本地多模态命中统一做按路由 reciprocal-rank
+  归一化、同 ID 融合、保守去重、结构化冲突识别、来源多样性选择、Token 预算和
+  citation 映射。上下文把正文作为 JSON 转义的不可信数据，所有选择/去重/排除结果
+  通过 `EvidenceDecision` 审计。
 - 原始文件只进入对象存储；Kafka 消息只传 `asset_id`、`version`、`object_key` 等任务元数据。
 - 代码集成：每个模块使用独立 `codex/...` 分支；模块分支推送后创建 MR，后续修正继续推送同一 MR，Review 通过后再合并，禁止直接推送 `main`；PR 描述、变更摘要、验证结果和 Review 重点统一使用中文。
 
@@ -61,20 +66,19 @@
 | M07 | 文档入库与 Milvus 检索 | 已完成（随 PR #7 合入 M06 分支） | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
 | M08 | 图片入库与召回 | 已完成（随 PR #8 合入 M06 分支） | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | Review 中 | ASR、场景切分、关键帧与时间片段召回完成 |
-| M10 | 联网搜索与网页抽取 | Review 中 | SearchProvider、正文抽取、来源时间与失败降级完成 |
-| M11 | 证据治理与上下文构建 | 待开始 | 去重、冲突规则、Token 预算与 citation 映射完成 |
+| M10 | 联网搜索与网页抽取 | 已完成（随 PR #10 合入 M09 分支） | SearchProvider、正文抽取、来源时间与失败降级完成 |
+| M11 | 证据治理与上下文构建 | 开发完成，待创建 PR | 去重、冲突规则、Token 预算与 citation 映射完成 |
 | M12 | 最终生成与前端问答 | 待开始 | 基于证据生成、流式回答和引用展示完成 |
 | M13 | 评估与可观测性 | 待开始 | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
 
 ## 4. 当前工作快照
 
-- 当前模块：M10 联网搜索与网页抽取开发、文档和验证已完成，
-  [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10) Review 中。
-  [PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9) 仍是 M09 进入
-  当前集成分支的父 PR。
-- 当前分支：`codex/m10-web-search-extraction`，目标分支为
-  `codex/m09-video-ingestion-retrieval`；父 PR 合入后应及时把 M10 PR base 调整到
-  实际包含 M09 的集成分支或 `main`。
+- 当前模块：M11 证据治理与上下文构建开发、文档和可执行验证脚本已完成，正在创建
+  Review PR。[PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
+  已合入 M09 集成分支；[PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)
+  仍是当前堆叠链进入上游分支的父 PR。
+- 当前分支：`codex/m11-evidence-context`，目标分支为
+  `codex/m09-video-ingestion-retrieval`（已包含 M10）。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
@@ -115,17 +119,26 @@
   自动跳转并逐跳复核，限制 HTML 类型、超时、跳转和解压后字节数。Trafilatura
   2.1.0 提取正文；显式 Meta/JSON-LD/`time` 与 HTTP 时间会保留来源、精度、原值及
   时区假定，`fetched_at` 独立保存。单页失败返回 `citation_only`，不拖垮整次搜索。
+- 证据归一化基线：C++ 在各 `route_id` 内按名次转换为 reciprocal-rank 分数，同一
+  evidence ID 跨路由累加；ID 对应不同正文/模态/范围时拒绝请求。精确哈希/正文、
+  规范 URL 和三字符 SimHash 依次去重，但 claim、版本、统计口径、范围或明确发布时间
+  不同的近似文本会保留。
+- 冲突与上下文基线：只有带 `claim_key/claim_value` 的结构化声明参与确定性冲突识别，
+  内核不做 LLM 事实猜测或多数投票；冲突双方优先进入上下文，其次保证来源多样性。
+  默认总/单证据预算为 12000/2000，当前 `TokenCounter` 使用保守
+  `utf8_byte_upper_bound` 并把方法、计数、截断状态和每条 disposition 返回调用方。
+  网页和本地正文以 `content_untrusted_json` 转义封装，引用编号按最终入选顺序连续。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：`./scripts/verify_web_search.sh` 通过；M10 专项 22 项测试全部通过；全量
-  119 项 Python 测试中 114 项通过、5 项仅因常规发现阶段未启动 Core 跳过。
-  `pip check`、`git diff --check` 通过。本模块未修改 C++，按规则未启动或跟踪
-  Codebase Pipeline 的人工编译阶段。开发机未配置 Azure Foundry 项目、模型部署、
-  Bing connection 或 Entra Token，因此真实 Bing Grounding 调用与供应商展示要求
-  仍需集成环境验证；当前链路也不是批量爬虫，站点级 robots.txt 缓存和采集授权需在
-  启用批量采集前另行实现与评审。
-- 下一步：Review [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)；
-  父 PR 合入后调整 M10 base。M10 合并后开始 M11 证据治理与上下文构建。
+- 最近验证：无 gRPC C++ 构建的 5 项测试通过；生成契约、gRPC 服务及领域层共 7 项
+  CTest 通过；Python 全量 126 项中 120 项通过，6 项因未启动 Core 跳过；`pip check`、
+  `git diff --check` 和新验证脚本语法检查通过。`verify_core_service.sh` 在完成 Python
+  基础测试、代码生成、C++ 构建和 CTest 后，因沙箱禁止绑定 `127.0.0.1` 随机端口而
+  无法执行进程级 Python→C++ 测试；提升权限又被“编译阶段人工启动”规则拒绝，因此
+  未绕过。Milvus-enabled 回归已写入 `verify_evidence_context.sh`，本轮同样按该规则未
+  启动，需 Review 时人工执行。真实 Foundry/Bing 调用仍需具备 Azure 配置的集成环境。
+- 下一步：创建并 Review M11 PR；人工授权时执行
+  `./scripts/verify_evidence_context.sh`。M11 合并后开始 M12 最终生成与前端问答。
 
 ## 5. 更新日志
 
@@ -166,3 +179,9 @@
   正文提取、显式来源时间 provenance 和逐来源 `citation_only` 降级。M10 专项 22 项、
   全量 119 项 Python 测试及 `pip check`、`git diff --check` 通过；真实 Foundry/Bing
   调用需在具备 Azure 连接和 Entra Token 的集成环境验证。
+- 2026-08-20：M10 通过 [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
+  合入 M09 集成分支。M11 开发完成：新增跨本地/网页证据的分数归一化与路由融合、
+  精确/SimHash 保守去重、结构化冲突规则、来源多样性和双层 Token 预算、JSON 安全
+  上下文、连续 citation 与逐候选决策；Python 将 M10 网页来源映射成稳定 WEB Evidence，
+  C++ Store 命中补齐内容哈希。C++ 单元/服务测试与 Python 全量测试通过；进程级和
+  Milvus-enabled 完整脚本因本地端口权限及人工编译规则留待 Review 时授权执行。
