@@ -67,14 +67,15 @@
 | M08 | 图片入库与召回 | 已完成（随 PR #8 合入 M06 分支） | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | Review 中 | ASR、场景切分、关键帧与时间片段召回完成 |
 | M10 | 联网搜索与网页抽取 | 已完成（随 PR #10 合入 M09 分支） | SearchProvider、正文抽取、来源时间与失败降级完成 |
-| M11 | 证据治理与上下文构建 | 开发完成，待创建 PR | 去重、冲突规则、Token 预算与 citation 映射完成 |
+| M11 | 证据治理与上下文构建 | Review 中（PR #11） | 去重、冲突规则、Token 预算与 citation 映射完成 |
 | M12 | 最终生成与前端问答 | 待开始 | 基于证据生成、流式回答和引用展示完成 |
 | M13 | 评估与可观测性 | 待开始 | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
 
 ## 4. 当前工作快照
 
-- 当前模块：M11 证据治理与上下文构建开发、文档和可执行验证脚本已完成，正在创建
-  Review PR。[PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
+- 当前模块：M11 证据治理与上下文构建开发、文档和可执行验证脚本已完成，
+  [PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11) Review 中。
+  [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
   已合入 M09 集成分支；[PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)
   仍是当前堆叠链进入上游分支的父 PR。
 - 当前分支：`codex/m11-evidence-context`，目标分支为
@@ -137,7 +138,8 @@
   无法执行进程级 Python→C++ 测试；提升权限又被“编译阶段人工启动”规则拒绝，因此
   未绕过。Milvus-enabled 回归已写入 `verify_evidence_context.sh`，本轮同样按该规则未
   启动，需 Review 时人工执行。真实 Foundry/Bing 调用仍需具备 Azure 配置的集成环境。
-- 下一步：创建并 Review M11 PR；人工授权时执行
+- 下一步：Review
+  [PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11)；人工授权时执行
   `./scripts/verify_evidence_context.sh`。M11 合并后开始 M12 最终生成与前端问答。
 
 ## 5. 更新日志
@@ -180,7 +182,9 @@
   全量 119 项 Python 测试及 `pip check`、`git diff --check` 通过；真实 Foundry/Bing
   调用需在具备 Azure 连接和 Entra Token 的集成环境验证。
 - 2026-08-20：M10 通过 [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
-  合入 M09 集成分支。M11 开发完成：新增跨本地/网页证据的分数归一化与路由融合、
+  合入 M09 集成分支。M11 开发完成并创建
+  [PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11)：新增跨本地/
+  网页证据的分数归一化与路由融合、
   精确/SimHash 保守去重、结构化冲突规则、来源多样性和双层 Token 预算、JSON 安全
   上下文、连续 citation 与逐候选决策；Python 将 M10 网页来源映射成稳定 WEB Evidence，
   C++ Store 命中补齐内容哈希。C++ 单元/服务测试与 Python 全量测试通过；进程级和
