@@ -106,6 +106,19 @@ class Settings(BaseSettings):
     video_scene_threshold: float = 0.35
     video_keyframe_max_gap_seconds: int = 60
     video_max_keyframes: int = 240
+    bing_foundry_responses_url: str | None = None
+    bing_foundry_model_deployment: str | None = None
+    bing_grounding_connection_id: str | None = None
+    bing_foundry_access_token: SecretStr | None = None
+    bing_default_market: str | None = None
+    bing_default_language: str | None = None
+    web_search_timeout_seconds: float = 30.0
+    web_fetch_timeout_seconds: float = 10.0
+    web_fetch_max_bytes: int = 5_000_000
+    web_fetch_max_redirects: int = 3
+    web_fetch_user_agent: str = "multimodal-rag/0.1"
+    web_extract_max_chars: int = 100_000
+    web_extract_max_concurrency: int = 4
 
     @field_validator("api_prefix")
     @classmethod
@@ -389,6 +402,73 @@ class Settings(BaseSettings):
     def validate_keyframe_limit(cls, value: int) -> int:
         if not 1 <= value <= 2_000:
             raise ValueError("video keyframe limit must be between 1 and 2000")
+        return value
+
+    @field_validator("bing_foundry_responses_url")
+    @classmethod
+    def validate_bing_foundry_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ValueError("bing_foundry_responses_url must be an HTTPS URL")
+        return value.rstrip("/")
+
+    @field_validator(
+        "bing_foundry_model_deployment",
+        "bing_grounding_connection_id",
+        "bing_default_market",
+        "bing_default_language",
+    )
+    @classmethod
+    def validate_optional_search_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value or len(value) > 2_048 or "\x00" in value:
+            raise ValueError("Bing search configuration contains an invalid value")
+        return value
+
+    @field_validator("web_search_timeout_seconds", "web_fetch_timeout_seconds")
+    @classmethod
+    def validate_web_timeout(cls, value: float) -> float:
+        if not 0.1 <= value <= 300:
+            raise ValueError("web timeouts must be between 0.1 and 300 seconds")
+        return value
+
+    @field_validator("web_fetch_max_bytes")
+    @classmethod
+    def validate_web_byte_limit(cls, value: int) -> int:
+        if not 1_024 <= value <= 20_000_000:
+            raise ValueError("web_fetch_max_bytes must be between 1024 and 20000000")
+        return value
+
+    @field_validator("web_fetch_max_redirects")
+    @classmethod
+    def validate_web_redirect_limit(cls, value: int) -> int:
+        if not 0 <= value <= 10:
+            raise ValueError("web_fetch_max_redirects must be between 0 and 10")
+        return value
+
+    @field_validator("web_fetch_user_agent")
+    @classmethod
+    def validate_web_user_agent(cls, value: str) -> str:
+        if not value.strip() or len(value) > 512 or "\n" in value or "\r" in value:
+            raise ValueError("web_fetch_user_agent must be a short single line")
+        return value
+
+    @field_validator("web_extract_max_chars")
+    @classmethod
+    def validate_web_text_limit(cls, value: int) -> int:
+        if not 256 <= value <= 1_000_000:
+            raise ValueError("web_extract_max_chars must be between 256 and 1000000")
+        return value
+
+    @field_validator("web_extract_max_concurrency")
+    @classmethod
+    def validate_web_concurrency(cls, value: int) -> int:
+        if not 1 <= value <= 32:
+            raise ValueError("web_extract_max_concurrency must be between 1 and 32")
         return value
 
     @field_validator("mysql_dsn")

@@ -182,6 +182,24 @@ class SettingsTest(unittest.TestCase):
         settings = Settings(speech_api_key="speech-secret", _env_file=None)
         self.assertNotIn("speech-secret", repr(settings))
 
+    def test_web_search_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(bing_foundry_responses_url="grpc://foundry", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                bing_foundry_responses_url="http://foundry.example/responses",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(web_fetch_max_bytes=100, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(web_extract_max_concurrency=0, _env_file=None)
+        settings = Settings(
+            bing_foundry_access_token="foundry-secret",
+            _env_file=None,
+        )
+        self.assertNotIn("foundry-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()
