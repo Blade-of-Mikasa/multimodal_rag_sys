@@ -11,13 +11,21 @@ from .domain import ExtractionStatus, SourceTime, WebSearchBundle, WebSource
 
 
 def web_bundle_to_evidence(
-    bundle: WebSearchBundle, *, retrieved_at: datetime
+    bundle: WebSearchBundle,
+    *,
+    retrieved_at: datetime,
+    route_id: str | None = None,
 ) -> tuple[ExternalEvidence, ...]:
     """Convert source material, excluding the provider's synthesized answer."""
 
     _require_aware(retrieved_at)
     return tuple(
-        _source_to_evidence(bundle, source, retrieved_at=retrieved_at)
+        _source_to_evidence(
+            bundle,
+            source,
+            retrieved_at=retrieved_at,
+            route_id=route_id,
+        )
         for source in bundle.sources
     )
 
@@ -27,6 +35,7 @@ def _source_to_evidence(
     source: WebSource,
     *,
     retrieved_at: datetime,
+    route_id: str | None,
 ) -> ExternalEvidence:
     original_content = source.text.strip() or source.title.strip() or source.url
     content = _truncate_utf8(original_content, 1_000_000)
@@ -39,7 +48,13 @@ def _source_to_evidence(
         ("provider", _truncate_utf8(bundle.provider.strip(), 16_384)),
         ("query", _truncate_utf8(bundle.query.strip(), 16_384)),
         ("rank", str(source.rank)),
-        ("route_id", _truncate_utf8(f"web:{bundle.provider.strip()}", 16_384)),
+        (
+            "route_id",
+            _truncate_utf8(
+                route_id or f"web:{bundle.provider.strip()}",
+                16_384,
+            ),
+        ),
         ("source_authority", "curated"),
         ("extraction_status", source.status.value),
         ("search_url_count", str(len(bundle.search_urls))),
