@@ -26,8 +26,17 @@ class HealthResponse(ApiModel):
 
 class StreamQueryRequest(ApiModel):
     query: str = Field(min_length=1, max_length=8_000)
-    conversation_id: str | None = Field(default=None, max_length=128)
-    user_id: str | None = Field(default=None, max_length=128)
+    conversation_id: str | None = Field(
+        default=None,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
+    retrieval_scope: Literal["auto", "local", "web", "hybrid"] = "auto"
+    modalities: list[Literal["document", "image", "video"]] = Field(
+        default_factory=lambda: ["document", "image", "video"],
+        min_length=1,
+        max_length=3,
+    )
 
     @field_validator("query")
     @classmethod
@@ -37,9 +46,25 @@ class StreamQueryRequest(ApiModel):
             raise ValueError("query must not be blank")
         return value
 
+    @field_validator("modalities")
+    @classmethod
+    def reject_duplicate_modalities(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("modalities must be unique")
+        return value
+
 
 class StreamEvent(ApiModel):
-    event: Literal["accepted", "done"]
+    event: Literal[
+        "accepted",
+        "planning",
+        "retrieving",
+        "sources",
+        "delta",
+        "heartbeat",
+        "done",
+        "error",
+    ]
     request_id: str
     sequence: int = Field(ge=0)
     data: dict[str, Any]

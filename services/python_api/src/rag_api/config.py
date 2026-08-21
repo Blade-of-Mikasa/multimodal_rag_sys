@@ -74,6 +74,19 @@ class Settings(BaseSettings):
     embedding_dimension: int = 1024
     embedding_batch_size: int = 32
     embedding_timeout_seconds: float = 30.0
+    chat_endpoint_url: str = "http://127.0.0.1:8080/v1/responses"
+    chat_api_key: SecretStr | None = None
+    chat_model_id: str = "chat-general"
+    chat_model_version: str = "local"
+    chat_timeout_seconds: float = 120.0
+    chat_max_output_tokens: int = 2_048
+    planner_max_output_tokens: int = 1_024
+    answer_context_token_budget: int = 12_000
+    answer_max_evidence_tokens: int = 2_000
+    answer_local_top_k: int = 8
+    answer_local_timeout_ms: int = 2_000
+    answer_web_result_count: int = 5
+    sse_heartbeat_seconds: float = 15.0
     document_download_max_bytes: int = 100_000_000
     document_chunk_max_chars: int = 1_600
     document_chunk_overlap_chars: int = 200
@@ -202,6 +215,89 @@ class Settings(BaseSettings):
                 "embedding_timeout_seconds must be between 0.1 and 600"
             )
         return value
+
+    @field_validator("chat_endpoint_url")
+    @classmethod
+    def validate_chat_endpoint(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("chat_endpoint_url must be an HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("chat_model_id", "chat_model_version")
+    @classmethod
+    def validate_chat_identity(cls, value: str) -> str:
+        if not value.strip() or len(value) > 256:
+            raise ValueError(
+                "chat model identity must contain between 1 and 256 characters"
+            )
+        return value
+
+    @field_validator("chat_timeout_seconds")
+    @classmethod
+    def validate_chat_timeout(cls, value: float) -> float:
+        if not 1 <= value <= 600:
+            raise ValueError("chat_timeout_seconds must be between 1 and 600")
+        return value
+
+    @field_validator("chat_max_output_tokens", "planner_max_output_tokens")
+    @classmethod
+    def validate_generation_token_limit(cls, value: int) -> int:
+        if not 1 <= value <= 65_536:
+            raise ValueError("generation token limits must be between 1 and 65536")
+        return value
+
+    @field_validator("answer_context_token_budget")
+    @classmethod
+    def validate_answer_context_budget(cls, value: int) -> int:
+        if not 512 <= value <= 1_000_000:
+            raise ValueError(
+                "answer_context_token_budget must be between 512 and 1000000"
+            )
+        return value
+
+    @field_validator("answer_max_evidence_tokens")
+    @classmethod
+    def validate_answer_evidence_budget(cls, value: int) -> int:
+        if value < 256:
+            raise ValueError("answer_max_evidence_tokens must be at least 256")
+        return value
+
+    @field_validator("answer_local_top_k")
+    @classmethod
+    def validate_answer_top_k(cls, value: int) -> int:
+        if not 1 <= value <= 200:
+            raise ValueError("answer_local_top_k must be between 1 and 200")
+        return value
+
+    @field_validator("answer_local_timeout_ms")
+    @classmethod
+    def validate_answer_route_timeout(cls, value: int) -> int:
+        if not 100 <= value <= 30_000:
+            raise ValueError("answer_local_timeout_ms must be between 100 and 30000")
+        return value
+
+    @field_validator("answer_web_result_count")
+    @classmethod
+    def validate_answer_web_count(cls, value: int) -> int:
+        if not 1 <= value <= 50:
+            raise ValueError("answer_web_result_count must be between 1 and 50")
+        return value
+
+    @field_validator("sse_heartbeat_seconds")
+    @classmethod
+    def validate_sse_heartbeat(cls, value: float) -> float:
+        if not 0.01 <= value <= 60:
+            raise ValueError("sse_heartbeat_seconds must be between 0.01 and 60")
+        return value
+
+    @model_validator(mode="after")
+    def validate_answer_budgets(self) -> "Settings":
+        if self.answer_max_evidence_tokens > self.answer_context_token_budget:
+            raise ValueError(
+                "answer_max_evidence_tokens must not exceed context budget"
+            )
+        return self
 
     @field_validator("document_download_max_bytes")
     @classmethod

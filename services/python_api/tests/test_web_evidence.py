@@ -52,8 +52,12 @@ class WebEvidenceTest(unittest.TestCase):
             ),
         )
 
-        first = web_bundle_to_evidence(bundle, retrieved_at=observed_at)
-        second = web_bundle_to_evidence(bundle, retrieved_at=observed_at)
+        first = web_bundle_to_evidence(
+            bundle, retrieved_at=observed_at, route_id="web:2"
+        )
+        second = web_bundle_to_evidence(
+            bundle, retrieved_at=observed_at, route_id="web:2"
+        )
 
         self.assertEqual(first, second)
         self.assertEqual(2, len(first))
@@ -65,6 +69,7 @@ class WebEvidenceTest(unittest.TestCase):
         self.assertEqual([], first[0].validate())
         self.assertIn(("citation_only", "true"), first[1].metadata)
         self.assertIn(("failure_code", "ROBOTS_DENIED"), first[1].metadata)
+        self.assertIn(("route_id", "web:2"), first[0].metadata)
         self.assertNotIn(bundle.grounded_text, tuple(item.content for item in first))
 
     def test_requires_an_aware_retrieval_time(self) -> None:

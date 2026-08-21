@@ -200,6 +200,23 @@ class SettingsTest(unittest.TestCase):
         )
         self.assertNotIn("foundry-secret", repr(settings))
 
+    def test_answer_generation_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(chat_endpoint_url="grpc://chat", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(chat_max_output_tokens=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(answer_local_timeout_ms=99, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                answer_context_token_budget=1_000,
+                answer_max_evidence_tokens=1_001,
+                _env_file=None,
+            )
+
+        settings = Settings(chat_api_key="chat-secret", _env_file=None)
+        self.assertNotIn("chat-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()

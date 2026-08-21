@@ -67,19 +67,18 @@
 | M08 | 图片入库与召回 | 已完成（随 PR #8 合入 M06 分支） | Caption、OCR、向量化与图片证据返回完成 |
 | M09 | 视频入库与召回 | Review 中 | ASR、场景切分、关键帧与时间片段召回完成 |
 | M10 | 联网搜索与网页抽取 | 已完成（随 PR #10 合入 M09 分支） | SearchProvider、正文抽取、来源时间与失败降级完成 |
-| M11 | 证据治理与上下文构建 | Review 中（PR #11） | 去重、冲突规则、Token 预算与 citation 映射完成 |
-| M12 | 最终生成与前端问答 | 待开始 | 基于证据生成、流式回答和引用展示完成 |
+| M11 | 证据治理与上下文构建 | 已完成（PR #11） | 去重、冲突规则、Token 预算与 citation 映射完成 |
+| M12 | 最终生成与前端问答 | 开发完成（待创建 PR） | 基于证据生成、流式回答和引用展示完成 |
 | M13 | 评估与可观测性 | 待开始 | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
 
 ## 4. 当前工作快照
 
-- 当前模块：M11 证据治理与上下文构建开发、文档和可执行验证脚本已完成，
-  [PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11) Review 中。
-  [PR #10](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/10)
+- 当前模块：M12 最终生成与前端问答开发、文档、依赖锁和可执行验证脚本已完成，
+  正在创建 Review PR。[PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11)
   已合入 M09 集成分支；[PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)
   仍是当前堆叠链进入上游分支的父 PR。
-- 当前分支：`codex/m11-evidence-context`，目标分支为
-  `codex/m09-video-ingestion-retrieval`（已包含 M10）。
+- 当前分支：`codex/m12-answer-ui`，目标分支为
+  `codex/m09-video-ingestion-retrieval`（已包含 M10-M11）。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
@@ -129,18 +128,29 @@
   默认总/单证据预算为 12000/2000，当前 `TokenCounter` 使用保守
   `utf8_byte_upper_bound` 并把方法、计数、截断状态和每条 disposition 返回调用方。
   网页和本地正文以 `content_untrusted_json` 转义封装，引用编号按最终入选顺序连续。
+- 查询与生成基线：Python `ModelQueryPlanner` 通过通用 `ChatModel` 和严格 JSON Schema
+  生成最多 6 条路由，再强制应用 local/web/hybrid/auto 范围与允许模态；应用分批生成
+  Query Embedding、并发执行 Bing 路由，把本地路由和 WEB Evidence 统一交给 C++。
+  单条 Web 路由失败可在混合模式降级，合法空结果固定返回证据不足，不用空上下文调用
+  LLM。最终 ChatModel 以 Responses SSE 流式生成，Python 再审计 valid/invalid/uncited
+  citation，供应商错误只通过稳定中文错误码对外暴露。
+- 问答传输基线：`POST /api/v1/queries/stream` 依次发送 accepted、planning、retrieving、
+  sources、delta、done/error；长步骤 heartbeat 保留同一个 pending `anext()`，不取消或
+  重启业务调用。请求体不接受身份和 ACL；tenant/user/最多 100 个可读 ACL 只由可信
+  网关注入，生产网关必须剥离客户端同名头后覆盖。
+- 前端基线：React 19.2.8 + TypeScript 7.0.2 + Vite 8.2.1 精确锁定；fetch 解析
+  POST-over-SSE、限制单事件大小并校验 sequence 严格递增。回答按纯文本渲染，仅把
+  内核已返回的 `[证据 N]` 建立来源链接，外链再次限制为 HTTP(S)。页面包含问答工作台、
+  证据/冲突卡片、Python/C++ 架构图和可播放的六阶段流程演示。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：无 gRPC C++ 构建的 5 项测试通过；生成契约、gRPC 服务及领域层共 7 项
-  CTest 通过；Python 全量 126 项中 120 项通过，6 项因未启动 Core 跳过；`pip check`、
-  `git diff --check` 和新验证脚本语法检查通过。`verify_core_service.sh` 在完成 Python
-  基础测试、代码生成、C++ 构建和 CTest 后，因沙箱禁止绑定 `127.0.0.1` 随机端口而
-  无法执行进程级 Python→C++ 测试；提升权限又被“编译阶段人工启动”规则拒绝，因此
-  未绕过。Milvus-enabled 回归已写入 `verify_evidence_context.sh`，本轮同样按该规则未
-  启动，需 Review 时人工执行。真实 Foundry/Bing 调用仍需具备 Azure 配置的集成环境。
-- 下一步：Review
-  [PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11)；人工授权时执行
-  `./scripts/verify_evidence_context.sh`。M11 合并后开始 M12 最终生成与前端问答。
+- 最近验证：Python 全量 143 项中 136 项通过、7 项因未启动 C++ Core 跳过；M12 专项
+  36 项和前端 Vitest 3 项通过，TypeScript `--noEmit`、`pip check`、npm audit、
+  `git diff --check` 通过。桌面与 390px 移动端完成浏览器视觉验收，控制台无错误，
+  流程动画状态可正确推进。按 Codebase Pipeline 人工编译规则未执行前端 production
+  build，也未启动 C++/Milvus 编译；真实模型、Foundry/Bing 和 gRPC 闭环需集成环境验证。
+- 下一步：为 M12 创建中文 PR 并 Review；人工启动编译阶段时执行
+  `RAG_VERIFY_FRONTEND_BUILD=1 ./scripts/verify_answer_ui.sh`。
 
 ## 5. 更新日志
 
@@ -189,3 +199,9 @@
   上下文、连续 citation 与逐候选决策；Python 将 M10 网页来源映射成稳定 WEB Evidence，
   C++ Store 命中补齐内容哈希。C++ 单元/服务测试与 Python 全量测试通过；进程级和
   Milvus-enabled 完整脚本因本地端口权限及人工编译规则留待 Review 时授权执行。
+- 2026-08-21：M11 通过 [PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11)
+  合入 M09 集成分支。M12 开发完成：新增通用 ChatModel/Responses SSE 适配、严格结构化
+  Query Planner、本地与 Bing 检索编排、C++ 证据上下文约束生成、引用审计及安全错误；
+  React 问答台展示真实流、来源、冲突、架构图和六阶段动画。Python 全量与 M12 专项、
+  前端单测/类型检查、依赖审计和桌面/移动视觉验收通过，production build 按人工编译规则
+  留给 Review 阶段启动。
