@@ -101,7 +101,10 @@ class ModelQueryPlanner:
                 raise TypeError("routes must be an array")
             candidates = tuple(self._decode_route(item) for item in raw_routes)
             return RetrievalPlan(
-                routes=self._apply_preferences(query, candidates, preferences)
+                routes=self._apply_preferences(query, candidates, preferences),
+                usage=completion.usage,
+                model_id=self._model.model_id,
+                model_version=self._model.model_version,
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise AnswerPipelineError(

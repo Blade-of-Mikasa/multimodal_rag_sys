@@ -49,6 +49,9 @@ class QueryPlannerTest(unittest.IsolatedAsyncioTestCase):
             {route.source_scope for route in plan.routes},
         )
         self.assertTrue(model.requests[0].response_schema)
+        self.assertEqual("planner", plan.model_id)
+        self.assertEqual("test", plan.model_version)
+        self.assertIsNotNone(plan.usage)
 
     async def test_local_scope_filters_web_and_deduplicates_routes(self) -> None:
         route = (

@@ -217,6 +217,36 @@ class SettingsTest(unittest.TestCase):
         settings = Settings(chat_api_key="chat-secret", _env_file=None)
         self.assertNotIn("chat-secret", repr(settings))
 
+    def test_telemetry_settings_require_secure_bounded_export(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(telemetry_enabled=True, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                telemetry_enabled=True,
+                otel_exporter_otlp_endpoint="grpc://collector:4317",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(
+                telemetry_enabled=True,
+                environment="production",
+                otel_exporter_otlp_endpoint="http://collector:4318",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(otel_trace_sample_ratio=1.1, _env_file=None)
+
+        settings = Settings(
+            telemetry_enabled=True,
+            environment="production",
+            otel_exporter_otlp_endpoint="https://collector.example/otel",
+            _env_file=None,
+        )
+        self.assertEqual(
+            "https://collector.example/otel",
+            settings.otel_exporter_otlp_endpoint,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
