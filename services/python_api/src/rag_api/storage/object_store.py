@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+from pathlib import Path
 from typing import Any, Protocol
 
 from aiobotocore.config import AioConfig
@@ -42,6 +45,12 @@ class StoredObject:
     metadata: dict[str, str]
 
 
+@dataclass(frozen=True, slots=True)
+class DownloadedObject:
+    size_bytes: int
+    content_sha256: str
+
+
 class ObjectStore(Protocol):
     async def presign_put(
         self,
@@ -56,6 +65,14 @@ class ObjectStore(Protocol):
     async def head(self, object_key: str) -> StoredObject: ...
 
     async def download(self, object_key: str, *, max_bytes: int) -> bytes: ...
+
+    async def download_to_file(
+        self,
+        object_key: str,
+        *,
+        destination: Path,
+        max_bytes: int,
+    ) -> DownloadedObject: ...
 
     async def delete(self, object_key: str) -> None: ...
 
@@ -205,6 +222,54 @@ class S3ObjectStore:
         except (BotoCoreError, KeyError, TypeError, ValueError) as error:
             raise ObjectStoreError("failed to download object") from error
         return b"".join(chunks)
+
+    async def download_to_file(
+        self,
+        object_key: str,
+        *,
+        destination: Path,
+        max_bytes: int,
+    ) -> DownloadedObject:
+        """Stream an object to a caller-owned path with a hard byte budget."""
+
+        if max_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+        digest = sha256()
+        total = 0
+        try:
+            async with self._client() as client:
+                response = await client.get_object(
+                    Bucket=self._settings.object_storage_bucket,
+                    Key=object_key,
+                )
+                content_length = int(response.get("ContentLength", 0))
+                if content_length > max_bytes:
+                    raise ObjectTooLargeError(object_key)
+                body = response["Body"]
+                with destination.open("xb") as output:
+                    async with body:
+                        async for chunk in body.iter_chunks(chunk_size=1024 * 1024):
+                            total += len(chunk)
+                            if total > max_bytes:
+                                raise ObjectTooLargeError(object_key)
+                            digest.update(chunk)
+                            await asyncio.to_thread(output.write, chunk)
+        except ObjectTooLargeError:
+            destination.unlink(missing_ok=True)
+            raise
+        except ClientError as error:
+            destination.unlink(missing_ok=True)
+            status = error.response.get("ResponseMetadata", {}).get(
+                "HTTPStatusCode"
+            )
+            code = error.response.get("Error", {}).get("Code")
+            if status == 404 or code in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFoundError(object_key) from error
+            raise ObjectStoreError("failed to download object") from error
+        except (BotoCoreError, KeyError, OSError, TypeError, ValueError) as error:
+            destination.unlink(missing_ok=True)
+            raise ObjectStoreError("failed to download object") from error
+        return DownloadedObject(size_bytes=total, content_sha256=digest.hexdigest())
 
     async def delete(self, object_key: str) -> None:
         try:

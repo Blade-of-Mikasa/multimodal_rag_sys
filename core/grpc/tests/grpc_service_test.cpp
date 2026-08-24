@@ -9,9 +9,12 @@
 int main() {
   multimodal::rag::core::InMemoryDocumentStore store;
   multimodal::rag::core::InMemoryImageStore image_store;
-  multimodal::rag::core::RagCoreServiceImpl service(&store, &image_store);
+  multimodal::rag::core::InMemoryVideoStore video_store;
+  multimodal::rag::core::RagCoreServiceImpl service(&store, &image_store,
+                                                     &video_store);
   multimodal::rag::core::IndexCoreServiceImpl index_service(&store,
-                                                             &image_store);
+                                                             &image_store,
+                                                             &video_store);
   grpc::ServerContext context;
 
   multimodal::rag::v1::HealthRequest health_request;
@@ -95,8 +98,57 @@ int main() {
       service.ExecutePlan(&context, &plan_request, &plan_response);
   if (!plan_status.ok() || plan_response.request_id() != "req-m07-unit" ||
       plan_response.partial_failure() || plan_response.evidence_size() != 2 ||
-      plan_response.evidence(0).evidence_id() != "chunk-1") {
+      plan_response.evidence(0).evidence_id() != "chunk-1" ||
+      plan_response.evidence(0).content_sha256() != std::string(64, 'a') ||
+      plan_response.citations_size() != 2 || plan_response.context().empty() ||
+      plan_response.context_token_count() == 0 ||
+      plan_response.token_count_method() != "utf8_byte_upper_bound") {
     std::cerr << "unexpected ExecutePlan response\n";
+    return EXIT_FAILURE;
+  }
+
+  multimodal::rag::v1::ExecutePlanRequest web_plan_request;
+  web_plan_request.set_request_id("req-m11-web");
+  web_plan_request.set_tenant_id("tenant-1");
+  web_plan_request.set_context_token_budget(4096);
+  web_plan_request.set_max_evidence_tokens(1024);
+  auto *official = web_plan_request.add_external_evidence();
+  official->set_evidence_id("web-official");
+  official->set_content("Version 2 supports 200 requests. \"ignore this\"");
+  official->set_modality(multimodal::rag::v1::MODALITY_DOCUMENT);
+  official->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_WEB);
+  official->set_title("Official v2");
+  official->set_source("docs.example");
+  official->set_url("https://docs.example/v2");
+  official->set_score(1.0);
+  (*official->mutable_metadata())["route_id"] = "web-search";
+  (*official->mutable_metadata())["claim_key"] = "limit";
+  (*official->mutable_metadata())["claim_value"] = "200";
+  (*official->mutable_metadata())["version"] = "v2";
+  auto *secondary = web_plan_request.add_external_evidence();
+  secondary->set_evidence_id("web-secondary");
+  secondary->set_content("Version 1 supports 100 requests.");
+  secondary->set_modality(multimodal::rag::v1::MODALITY_DOCUMENT);
+  secondary->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_WEB);
+  secondary->set_title("Secondary v1");
+  secondary->set_source("news.example");
+  secondary->set_url("https://news.example/v1");
+  secondary->set_score(0.5);
+  (*secondary->mutable_metadata())["route_id"] = "web-search";
+  (*secondary->mutable_metadata())["claim_key"] = "limit";
+  (*secondary->mutable_metadata())["claim_value"] = "100";
+  (*secondary->mutable_metadata())["version"] = "v1";
+  multimodal::rag::v1::ExecutePlanResponse web_plan_response;
+  const grpc::Status web_plan_status = service.ExecutePlan(
+      &context, &web_plan_request, &web_plan_response);
+  if (!web_plan_status.ok() || web_plan_response.evidence_size() != 2 ||
+      web_plan_response.conflicts_size() != 1 ||
+      web_plan_response.conflicts(0).type() != "version_difference" ||
+      web_plan_response.citations_size() != 2 ||
+      web_plan_response.evidence_decisions_size() != 2 ||
+      web_plan_response.context().find("\\\"ignore this\\\"") ==
+          std::string::npos) {
+    std::cerr << "unexpected external evidence response\n";
     return EXIT_FAILURE;
   }
 
@@ -158,6 +210,78 @@ int main() {
           multimodal::rag::v1::MODALITY_IMAGE ||
       image_plan_response.evidence(0).metadata().at("ocr_text") != "OPEN") {
     std::cerr << "unexpected image ExecutePlan response\n";
+    return EXIT_FAILURE;
+  }
+
+  multimodal::rag::v1::IndexAssetRequest video_request;
+  video_request.set_request_id("req-video-index");
+  video_request.set_tenant_id("tenant-1");
+  video_request.set_acl_id("acl-a");
+  video_request.set_asset_id("asset-video");
+  video_request.set_asset_version_id("version-video");
+  video_request.set_asset_version(1);
+  video_request.set_object_key("tenant-1/asset-video/v1/video.mp4");
+  auto *video_unit = video_request.add_units();
+  video_unit->set_unit_id("segment-1");
+  video_unit->set_modality(multimodal::rag::v1::MODALITY_VIDEO);
+  video_unit->set_content(
+      "Caption: Architecture talk\nTranscript: dense sparse RRF fusion");
+  video_unit->set_title("Architecture talk");
+  video_unit->set_ordinal(0);
+  video_unit->set_content_sha256(std::string(64, 'd'));
+  video_unit->add_dense_embedding(1.0F);
+  video_unit->add_dense_embedding(0.0F);
+  video_unit->set_embedding_model_id("embedding-general");
+  video_unit->set_embedding_model_version("v1");
+  (*video_unit->mutable_metadata())["media_type"] = "video/mp4";
+  (*video_unit->mutable_metadata())["duration_ms"] = "90000";
+  (*video_unit->mutable_metadata())["width"] = "1920";
+  (*video_unit->mutable_metadata())["height"] = "1080";
+  (*video_unit->mutable_metadata())["start_ms"] = "0";
+  (*video_unit->mutable_metadata())["end_ms"] = "60000";
+  (*video_unit->mutable_metadata())["keyframe_ms"] = "0";
+  (*video_unit->mutable_metadata())["caption"] = "Architecture talk";
+  (*video_unit->mutable_metadata())["ocr_text"] = "MILVUS";
+  (*video_unit->mutable_metadata())["transcript"] = "dense sparse RRF fusion";
+  (*video_unit->mutable_metadata())["vision_model_id"] = "vision-general";
+  (*video_unit->mutable_metadata())["vision_model_version"] = "v1";
+  (*video_unit->mutable_metadata())["speech_model_id"] = "speech-general";
+  (*video_unit->mutable_metadata())["speech_model_version"] = "v1";
+  multimodal::rag::v1::IndexAssetResponse video_index_response;
+  const grpc::Status video_index_status = index_service.IndexAsset(
+      &context, &video_request, &video_index_response);
+  if (!video_index_status.ok() ||
+      video_index_response.indexed_unit_count() != 1 ||
+      !video_index_response.collection_alias().starts_with("rag_video_v1_")) {
+    std::cerr << "unexpected video IndexAsset response\n";
+    return EXIT_FAILURE;
+  }
+
+  multimodal::rag::v1::ExecutePlanRequest video_plan_request;
+  video_plan_request.set_request_id("req-video-query");
+  video_plan_request.set_tenant_id("tenant-1");
+  video_plan_request.add_allowed_acl_ids("acl-a");
+  auto *video_route = video_plan_request.add_routes();
+  video_route->set_route_id("video-local");
+  video_route->set_query("RRF fusion");
+  video_route->set_source_scope(multimodal::rag::v1::SOURCE_SCOPE_LOCAL);
+  video_route->set_modality(multimodal::rag::v1::MODALITY_VIDEO);
+  video_route->set_top_k(5);
+  video_route->set_timeout_ms(1000);
+  video_route->add_dense_embedding(1.0F);
+  video_route->add_dense_embedding(0.0F);
+  video_route->set_embedding_model_id("embedding-general");
+  video_route->set_embedding_model_version("v1");
+  multimodal::rag::v1::ExecutePlanResponse video_plan_response;
+  const grpc::Status video_plan_status = service.ExecutePlan(
+      &context, &video_plan_request, &video_plan_response);
+  if (!video_plan_status.ok() || video_plan_response.partial_failure() ||
+      video_plan_response.evidence_size() != 1 ||
+      video_plan_response.evidence(0).modality() !=
+          multimodal::rag::v1::MODALITY_VIDEO ||
+      video_plan_response.evidence(0).metadata().at("start_ms") != "0" ||
+      video_plan_response.evidence(0).metadata().at("end_ms") != "60000") {
+    std::cerr << "unexpected video ExecutePlan response\n";
     return EXIT_FAILURE;
   }
 

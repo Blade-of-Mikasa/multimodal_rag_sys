@@ -29,8 +29,40 @@ class CorePlanResult:
     request_id: str
     context: str
     evidence_count: int
+    citations: tuple[CoreCitation, ...]
+    conflicts: tuple[CoreConflict, ...]
+    evidence_decisions: tuple[CoreEvidenceDecision, ...]
+    context_token_count: int
+    context_truncated: bool
+    token_count_method: str
     route_error_codes: tuple[str, ...]
     partial_failure: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CoreCitation:
+    citation_id: int
+    evidence_id: str
+    source: str
+    url: str
+    title: str
+    modality: Modality
+    metadata: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CoreConflict:
+    evidence_ids: tuple[str, ...]
+    type: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class CoreEvidenceDecision:
+    evidence_id: str
+    disposition: str
+    representative_evidence_id: str
+    reason: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +202,25 @@ class GrpcCoreClient:
                 )
                 for route in plan.routes
             ],
+            external_evidence=[
+                self._messages.Evidence(
+                    evidence_id=evidence.evidence_id,
+                    content=evidence.content,
+                    modality=int(evidence.modality),
+                    source_scope=int(evidence.source_scope),
+                    title=evidence.title,
+                    source=evidence.source,
+                    url=evidence.url,
+                    published_at_unix_ms=evidence.published_at_unix_ms,
+                    retrieved_at_unix_ms=evidence.retrieved_at_unix_ms,
+                    score=evidence.score,
+                    metadata=dict(evidence.metadata),
+                    content_sha256=evidence.content_sha256,
+                )
+                for evidence in plan.external_evidence
+            ],
+            context_token_budget=plan.context_token_budget,
+            max_evidence_tokens=plan.max_evidence_tokens,
         )
         try:
             response = await stub.ExecutePlan(
@@ -178,6 +229,10 @@ class GrpcCoreClient:
                 wait_for_ready=True,
             )
         except grpc.aio.AioRpcError as error:
+            if error.code() is grpc.StatusCode.INVALID_ARGUMENT:
+                raise ValueError(
+                    f"C++ Core rejected ExecutePlan: {error.details()}"
+                ) from error
             raise CoreUnavailableError(
                 f"C++ Core ExecutePlan failed: {error.code().name}"
             ) from error
@@ -185,6 +240,40 @@ class GrpcCoreClient:
             request_id=response.request_id,
             context=response.context,
             evidence_count=len(response.evidence),
+            citations=tuple(
+                CoreCitation(
+                    citation_id=citation.citation_id,
+                    evidence_id=citation.evidence_id,
+                    source=citation.source,
+                    url=citation.url,
+                    title=citation.title,
+                    modality=Modality(citation.modality),
+                    metadata=tuple(sorted(citation.metadata.items())),
+                )
+                for citation in response.citations
+            ),
+            conflicts=tuple(
+                CoreConflict(
+                    evidence_ids=tuple(conflict.evidence_ids),
+                    type=conflict.type,
+                    reason=conflict.reason,
+                )
+                for conflict in response.conflicts
+            ),
+            evidence_decisions=tuple(
+                CoreEvidenceDecision(
+                    evidence_id=decision.evidence_id,
+                    disposition=decision.disposition,
+                    representative_evidence_id=(
+                        decision.representative_evidence_id
+                    ),
+                    reason=decision.reason,
+                )
+                for decision in response.evidence_decisions
+            ),
+            context_token_count=response.context_token_count,
+            context_truncated=response.context_truncated,
+            token_count_method=response.token_count_method,
             route_error_codes=tuple(error.code for error in response.route_errors),
             partial_failure=response.partial_failure,
         )
@@ -323,8 +412,12 @@ class GrpcCoreClient:
         ):
             raise ValueError("index asset identity and units must not be empty")
         first = command.units[0]
-        if first.modality not in {Modality.DOCUMENT, Modality.IMAGE}:
-            raise ValueError("index unit modality must be document or image")
+        if first.modality not in {
+            Modality.DOCUMENT,
+            Modality.IMAGE,
+            Modality.VIDEO,
+        }:
+            raise ValueError("index unit modality must be document, image, or video")
         if first.modality is Modality.IMAGE and len(command.units) != 1:
             raise ValueError("one image asset version must contain exactly one unit")
         unit_ids: set[str] = set()
@@ -382,6 +475,45 @@ class GrpcCoreClient:
                     or not metadata_values.get("vision_model_version")
                 ):
                     raise ValueError("image index metadata and caption must be valid")
+            if unit.modality is Modality.VIDEO:
+                integer_fields = {
+                    name: metadata_values.get(name, "")
+                    for name in (
+                        "duration_ms",
+                        "width",
+                        "height",
+                        "start_ms",
+                        "end_ms",
+                        "keyframe_ms",
+                    )
+                }
+                if any(
+                    not value.isascii() or not value.isdecimal()
+                    for value in integer_fields.values()
+                ):
+                    raise ValueError("video timestamps and dimensions must be integers")
+                duration_ms = int(integer_fields["duration_ms"])
+                start_ms = int(integer_fields["start_ms"])
+                end_ms = int(integer_fields["end_ms"])
+                keyframe_ms = int(integer_fields["keyframe_ms"])
+                if (
+                    not unit.title
+                    or metadata_values.get("media_type")
+                    not in {"video/mp4", "video/quicktime", "video/webm"}
+                    or not 1 <= duration_ms <= 86_400_000
+                    or not 1 <= int(integer_fields["width"]) <= 4_294_967_295
+                    or not 1 <= int(integer_fields["height"]) <= 4_294_967_295
+                    or int(integer_fields["width"]) > 32_768
+                    or int(integer_fields["height"]) > 32_768
+                    or not 0 <= start_ms < end_ms <= duration_ms
+                    or not start_ms <= keyframe_ms < end_ms
+                    or not metadata_values.get("caption")
+                    or not metadata_values.get("speech_model_id")
+                    or not metadata_values.get("speech_model_version")
+                    or not metadata_values.get("vision_model_id")
+                    or not metadata_values.get("vision_model_version")
+                ):
+                    raise ValueError("video index metadata and segment bounds are invalid")
             if unit.unit_id in unit_ids or unit.ordinal in ordinals:
                 raise ValueError("index unit IDs and ordinals must be unique")
             unit_ids.add(unit.unit_id)

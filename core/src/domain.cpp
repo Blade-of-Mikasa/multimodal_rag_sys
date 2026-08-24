@@ -28,7 +28,8 @@ std::vector<std::string> Validate(const RetrievalRoute &route) {
   }
   if (route.source_scope == SourceScope::kLocal &&
       (route.modality == Modality::kDocument ||
-       route.modality == Modality::kImage)) {
+       route.modality == Modality::kImage ||
+       route.modality == Modality::kVideo)) {
     if (route.dense_embedding.empty() ||
         route.dense_embedding.size() > kMaxEmbeddingDimension) {
       errors.emplace_back("local route dense_embedding dimension must be "

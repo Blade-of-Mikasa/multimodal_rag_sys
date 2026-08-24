@@ -167,6 +167,56 @@ class SettingsTest(unittest.TestCase):
         settings = Settings(vision_api_key="vision-secret", _env_file=None)
         self.assertNotIn("vision-secret", repr(settings))
 
+    def test_video_pipeline_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(speech_endpoint_url="grpc://speech", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_audio_chunk_seconds=751, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_scene_threshold=1.0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_max_duration_seconds=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_max_dimension=256, _env_file=None)
+
+        settings = Settings(speech_api_key="speech-secret", _env_file=None)
+        self.assertNotIn("speech-secret", repr(settings))
+
+    def test_web_search_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(bing_foundry_responses_url="grpc://foundry", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                bing_foundry_responses_url="http://foundry.example/responses",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(web_fetch_max_bytes=100, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(web_extract_max_concurrency=0, _env_file=None)
+        settings = Settings(
+            bing_foundry_access_token="foundry-secret",
+            _env_file=None,
+        )
+        self.assertNotIn("foundry-secret", repr(settings))
+
+    def test_answer_generation_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(chat_endpoint_url="grpc://chat", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(chat_max_output_tokens=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(answer_local_timeout_ms=99, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                answer_context_token_budget=1_000,
+                answer_max_evidence_tokens=1_001,
+                _env_file=None,
+            )
+
+        settings = Settings(chat_api_key="chat-secret", _env_file=None)
+        self.assertNotIn("chat-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()

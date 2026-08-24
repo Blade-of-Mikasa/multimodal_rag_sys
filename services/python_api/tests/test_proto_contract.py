@@ -18,6 +18,10 @@ class ProtoContractTest(unittest.TestCase):
             "service IndexCoreService",
             "rpc IndexAsset",
             "message Evidence",
+            "repeated Evidence external_evidence",
+            "message EvidenceDecision",
+            "context_token_budget",
+            "token_count_method",
             "message RouteError",
         )
         for fragment in required_fragments:

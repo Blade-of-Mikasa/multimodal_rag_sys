@@ -57,6 +57,14 @@ message ExecutePlanRequest {
   repeated RetrievalRoute routes = 4;
   repeated string allowed_acl_ids = 5;
   string tenant_id = 6;
+  // Public web evidence is fetched and normalized by Python, then governed
+  // together with ACL-filtered local retrieval results in C++. Only WEB scope
+  // items are accepted here so callers cannot bypass local-store ACL checks.
+  repeated Evidence external_evidence = 7;
+  // Zero uses the server defaults. The active token counter and its method are
+  // returned in ExecutePlanResponse for auditability.
+  uint32 context_token_budget = 8;
+  uint32 max_evidence_tokens = 9;
 }
 
 message Evidence {
@@ -71,6 +79,7 @@ message Evidence {
   int64 retrieved_at_unix_ms = 9;
   double score = 10;
   map<string, string> metadata = 11;
+  string content_sha256 = 12;
 }
 
 message Conflict {
@@ -84,6 +93,17 @@ message Citation {
   string evidence_id = 2;
   string source = 3;
   string url = 4;
+  string title = 5;
+  Modality modality = 6;
+  map<string, string> metadata = 7;
+}
+
+message EvidenceDecision {
+  string evidence_id = 1;
+  // selected, exact_duplicate, near_duplicate, or budget_excluded.
+  string disposition = 2;
+  string representative_evidence_id = 3;
+  string reason = 4;
 }
 
 message RouteError {
@@ -101,6 +121,10 @@ message ExecutePlanResponse {
   repeated Citation citations = 5;
   repeated RouteError route_errors = 6;
   bool partial_failure = 7;
+  uint32 context_token_count = 8;
+  bool context_truncated = 9;
+  repeated EvidenceDecision evidence_decisions = 10;
+  string token_count_method = 11;
 }
 
 message NormalizedUnit {

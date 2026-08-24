@@ -10,6 +10,8 @@ from .config import Settings
 from .core_client import CoreClient, GrpcCoreClient
 from .db.session import create_database_engine, create_session_factory
 from .errors import register_exception_handlers
+from .generation.runtime import build_answer_service
+from .generation.service import AnswerService
 from .request_context import request_context_middleware
 from .routes.assets import router as assets_router
 from .routes.health import router as health_router
@@ -22,8 +24,15 @@ def create_app(
     settings: Settings | None = None,
     core_client: CoreClient | None = None,
     upload_service: AssetUploadService | None = None,
+    answer_service: AnswerService | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
+    resolved_core_client = core_client or GrpcCoreClient(
+        resolved_settings.core_grpc_target,
+        resolved_settings.core_grpc_timeout_seconds,
+        resolved_settings.core_grpc_index_timeout_seconds,
+        resolved_settings.core_grpc_index_batch_max_bytes,
+    )
     database_engine = None
     if upload_service is None:
         database_engine = create_database_engine(resolved_settings)
@@ -50,13 +59,11 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = resolved_settings
-    app.state.core_client = core_client or GrpcCoreClient(
-        resolved_settings.core_grpc_target,
-        resolved_settings.core_grpc_timeout_seconds,
-        resolved_settings.core_grpc_index_timeout_seconds,
-        resolved_settings.core_grpc_index_batch_max_bytes,
-    )
+    app.state.core_client = resolved_core_client
     app.state.upload_service = upload_service
+    app.state.answer_service = answer_service or build_answer_service(
+        resolved_settings, resolved_core_client
+    )
     app.middleware("http")(request_context_middleware)
     register_exception_handlers(app)
     app.include_router(health_router)

@@ -43,9 +43,54 @@ def image_unit(**overrides) -> IndexUnit:
     return IndexUnit(**values)
 
 
+def video_unit(**overrides) -> IndexUnit:
+    values = {
+        "unit_id": "segment-1",
+        "modality": Modality.VIDEO,
+        "content": "Caption and time-aligned transcript",
+        "title": "Architecture segment",
+        "ordinal": 0,
+        "page_number": 0,
+        "content_sha256": "b" * 64,
+        "dense_embedding": (1.0, 0.0),
+        "embedding_model_id": "embedding-general",
+        "embedding_model_version": "v1",
+        "metadata": (
+            ("media_type", "video/mp4"),
+            ("duration_ms", "90000"),
+            ("width", "1920"),
+            ("height", "1080"),
+            ("start_ms", "0"),
+            ("end_ms", "60000"),
+            ("keyframe_ms", "0"),
+            ("caption", "Architecture segment"),
+            ("ocr_text", "MILVUS"),
+            ("transcript", "time-aligned transcript"),
+            ("speech_model_id", "speech-general"),
+            ("speech_model_version", "v1"),
+            ("vision_model_id", "vision-general"),
+            ("vision_model_version", "v1"),
+        ),
+    }
+    values.update(overrides)
+    return IndexUnit(**values)
+
+
 class CoreIndexContractTest(unittest.TestCase):
     def test_accepts_bounded_image_metadata(self) -> None:
         GrpcCoreClient._validate_index_command(command(image_unit()))
+
+    def test_accepts_bounded_video_segment_metadata(self) -> None:
+        GrpcCoreClient._validate_index_command(command(video_unit()))
+
+        invalid = video_unit(
+            metadata=tuple(
+                (key, "90001" if key == "end_ms" else value)
+                for key, value in video_unit().metadata
+            )
+        )
+        with self.assertRaises(ValueError):
+            GrpcCoreClient._validate_index_command(command(invalid))
 
     def test_rejects_duplicate_metadata_and_mixed_modalities(self) -> None:
         with self.assertRaises(ValueError):

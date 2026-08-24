@@ -74,6 +74,19 @@ class Settings(BaseSettings):
     embedding_dimension: int = 1024
     embedding_batch_size: int = 32
     embedding_timeout_seconds: float = 30.0
+    chat_endpoint_url: str = "http://127.0.0.1:8080/v1/responses"
+    chat_api_key: SecretStr | None = None
+    chat_model_id: str = "chat-general"
+    chat_model_version: str = "local"
+    chat_timeout_seconds: float = 120.0
+    chat_max_output_tokens: int = 2_048
+    planner_max_output_tokens: int = 1_024
+    answer_context_token_budget: int = 12_000
+    answer_max_evidence_tokens: int = 2_000
+    answer_local_top_k: int = 8
+    answer_local_timeout_ms: int = 2_000
+    answer_web_result_count: int = 5
+    sse_heartbeat_seconds: float = 15.0
     document_download_max_bytes: int = 100_000_000
     document_chunk_max_chars: int = 1_600
     document_chunk_overlap_chars: int = 200
@@ -88,6 +101,37 @@ class Settings(BaseSettings):
     image_max_pixels: int = 25_000_000
     image_model_max_dimension: int = 4_096
     image_model_max_bytes: int = 10_000_000
+    speech_endpoint_url: str = "http://127.0.0.1:8080/v1/audio/transcriptions"
+    speech_api_key: SecretStr | None = None
+    speech_model_id: str = "speech-to-text-general"
+    speech_model_version: str = "local"
+    speech_language: str | None = None
+    speech_timeout_seconds: float = 600.0
+    speech_max_segments_per_chunk: int = 10_000
+    ffmpeg_binary: str = "ffmpeg"
+    ffprobe_binary: str = "ffprobe"
+    video_command_timeout_seconds: float = 1_800.0
+    video_download_max_bytes: int = 2_000_000_000
+    video_max_duration_seconds: int = 14_400
+    video_max_pixels: int = 50_000_000
+    video_max_dimension: int = 16_384
+    video_audio_chunk_seconds: int = 480
+    video_scene_threshold: float = 0.35
+    video_keyframe_max_gap_seconds: int = 60
+    video_max_keyframes: int = 240
+    bing_foundry_responses_url: str | None = None
+    bing_foundry_model_deployment: str | None = None
+    bing_grounding_connection_id: str | None = None
+    bing_foundry_access_token: SecretStr | None = None
+    bing_default_market: str | None = None
+    bing_default_language: str | None = None
+    web_search_timeout_seconds: float = 30.0
+    web_fetch_timeout_seconds: float = 10.0
+    web_fetch_max_bytes: int = 5_000_000
+    web_fetch_max_redirects: int = 3
+    web_fetch_user_agent: str = "multimodal-rag/0.1"
+    web_extract_max_chars: int = 100_000
+    web_extract_max_concurrency: int = 4
 
     @field_validator("api_prefix")
     @classmethod
@@ -171,6 +215,89 @@ class Settings(BaseSettings):
                 "embedding_timeout_seconds must be between 0.1 and 600"
             )
         return value
+
+    @field_validator("chat_endpoint_url")
+    @classmethod
+    def validate_chat_endpoint(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("chat_endpoint_url must be an HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("chat_model_id", "chat_model_version")
+    @classmethod
+    def validate_chat_identity(cls, value: str) -> str:
+        if not value.strip() or len(value) > 256:
+            raise ValueError(
+                "chat model identity must contain between 1 and 256 characters"
+            )
+        return value
+
+    @field_validator("chat_timeout_seconds")
+    @classmethod
+    def validate_chat_timeout(cls, value: float) -> float:
+        if not 1 <= value <= 600:
+            raise ValueError("chat_timeout_seconds must be between 1 and 600")
+        return value
+
+    @field_validator("chat_max_output_tokens", "planner_max_output_tokens")
+    @classmethod
+    def validate_generation_token_limit(cls, value: int) -> int:
+        if not 1 <= value <= 65_536:
+            raise ValueError("generation token limits must be between 1 and 65536")
+        return value
+
+    @field_validator("answer_context_token_budget")
+    @classmethod
+    def validate_answer_context_budget(cls, value: int) -> int:
+        if not 512 <= value <= 1_000_000:
+            raise ValueError(
+                "answer_context_token_budget must be between 512 and 1000000"
+            )
+        return value
+
+    @field_validator("answer_max_evidence_tokens")
+    @classmethod
+    def validate_answer_evidence_budget(cls, value: int) -> int:
+        if value < 256:
+            raise ValueError("answer_max_evidence_tokens must be at least 256")
+        return value
+
+    @field_validator("answer_local_top_k")
+    @classmethod
+    def validate_answer_top_k(cls, value: int) -> int:
+        if not 1 <= value <= 200:
+            raise ValueError("answer_local_top_k must be between 1 and 200")
+        return value
+
+    @field_validator("answer_local_timeout_ms")
+    @classmethod
+    def validate_answer_route_timeout(cls, value: int) -> int:
+        if not 100 <= value <= 30_000:
+            raise ValueError("answer_local_timeout_ms must be between 100 and 30000")
+        return value
+
+    @field_validator("answer_web_result_count")
+    @classmethod
+    def validate_answer_web_count(cls, value: int) -> int:
+        if not 1 <= value <= 50:
+            raise ValueError("answer_web_result_count must be between 1 and 50")
+        return value
+
+    @field_validator("sse_heartbeat_seconds")
+    @classmethod
+    def validate_sse_heartbeat(cls, value: float) -> float:
+        if not 0.01 <= value <= 60:
+            raise ValueError("sse_heartbeat_seconds must be between 0.01 and 60")
+        return value
+
+    @model_validator(mode="after")
+    def validate_answer_budgets(self) -> "Settings":
+        if self.answer_max_evidence_tokens > self.answer_context_token_budget:
+            raise ValueError(
+                "answer_max_evidence_tokens must not exceed context budget"
+            )
+        return self
 
     @field_validator("document_download_max_bytes")
     @classmethod
@@ -267,6 +394,177 @@ class Settings(BaseSettings):
             raise ValueError(
                 "image_model_max_dimension must be between 512 and 16384"
             )
+        return value
+
+    @field_validator("speech_endpoint_url")
+    @classmethod
+    def validate_speech_endpoint(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("speech_endpoint_url must be an HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("speech_model_id", "speech_model_version")
+    @classmethod
+    def validate_speech_identity(cls, value: str) -> str:
+        if not value.strip() or len(value) > 256:
+            raise ValueError(
+                "speech model identity must contain between 1 and 256 characters"
+            )
+        return value
+
+    @field_validator("speech_language")
+    @classmethod
+    def validate_speech_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value or len(value) > 32 or not value.isascii():
+            raise ValueError("speech_language must be a short ASCII language code")
+        return value
+
+    @field_validator("speech_timeout_seconds", "video_command_timeout_seconds")
+    @classmethod
+    def validate_video_timeout(cls, value: float) -> float:
+        if not 1 <= value <= 3_600:
+            raise ValueError("video and speech timeouts must be between 1 and 3600")
+        return value
+
+    @field_validator("speech_max_segments_per_chunk")
+    @classmethod
+    def validate_speech_segment_limit(cls, value: int) -> int:
+        if not 1 <= value <= 100_000:
+            raise ValueError("speech segment limit must be between 1 and 100000")
+        return value
+
+    @field_validator("ffmpeg_binary", "ffprobe_binary")
+    @classmethod
+    def validate_video_binary(cls, value: str) -> str:
+        if not value.strip() or len(value) > 4_096 or "\x00" in value:
+            raise ValueError("video binary path must not be blank")
+        return value
+
+    @field_validator("video_download_max_bytes")
+    @classmethod
+    def validate_video_byte_limit(cls, value: int) -> int:
+        if not 1 <= value <= 5_000_000_000:
+            raise ValueError("video byte limit must be between 1 and 5000000000")
+        return value
+
+    @field_validator("video_max_duration_seconds")
+    @classmethod
+    def validate_video_duration(cls, value: int) -> int:
+        if not 1 <= value <= 86_400:
+            raise ValueError("video duration must be between 1 and 86400 seconds")
+        return value
+
+    @field_validator("video_max_pixels")
+    @classmethod
+    def validate_video_pixels(cls, value: int) -> int:
+        if not 1_000_000 <= value <= 268_435_456:
+            raise ValueError("video pixel limit must be between 1000000 and 268435456")
+        return value
+
+    @field_validator("video_max_dimension")
+    @classmethod
+    def validate_video_dimension(cls, value: int) -> int:
+        if not 512 <= value <= 32_768:
+            raise ValueError("video dimension limit must be between 512 and 32768")
+        return value
+
+    @field_validator("video_audio_chunk_seconds")
+    @classmethod
+    def validate_audio_chunk_duration(cls, value: int) -> int:
+        if not 30 <= value <= 750:
+            raise ValueError("audio chunks must be between 30 and 750 seconds")
+        return value
+
+    @field_validator("video_scene_threshold")
+    @classmethod
+    def validate_scene_threshold(cls, value: float) -> float:
+        if not 0.01 <= value <= 0.99:
+            raise ValueError("video scene threshold must be between 0.01 and 0.99")
+        return value
+
+    @field_validator("video_keyframe_max_gap_seconds")
+    @classmethod
+    def validate_keyframe_gap(cls, value: int) -> int:
+        if not 5 <= value <= 600:
+            raise ValueError("video keyframe gap must be between 5 and 600 seconds")
+        return value
+
+    @field_validator("video_max_keyframes")
+    @classmethod
+    def validate_keyframe_limit(cls, value: int) -> int:
+        if not 1 <= value <= 2_000:
+            raise ValueError("video keyframe limit must be between 1 and 2000")
+        return value
+
+    @field_validator("bing_foundry_responses_url")
+    @classmethod
+    def validate_bing_foundry_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ValueError("bing_foundry_responses_url must be an HTTPS URL")
+        return value.rstrip("/")
+
+    @field_validator(
+        "bing_foundry_model_deployment",
+        "bing_grounding_connection_id",
+        "bing_default_market",
+        "bing_default_language",
+    )
+    @classmethod
+    def validate_optional_search_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value or len(value) > 2_048 or "\x00" in value:
+            raise ValueError("Bing search configuration contains an invalid value")
+        return value
+
+    @field_validator("web_search_timeout_seconds", "web_fetch_timeout_seconds")
+    @classmethod
+    def validate_web_timeout(cls, value: float) -> float:
+        if not 0.1 <= value <= 300:
+            raise ValueError("web timeouts must be between 0.1 and 300 seconds")
+        return value
+
+    @field_validator("web_fetch_max_bytes")
+    @classmethod
+    def validate_web_byte_limit(cls, value: int) -> int:
+        if not 1_024 <= value <= 20_000_000:
+            raise ValueError("web_fetch_max_bytes must be between 1024 and 20000000")
+        return value
+
+    @field_validator("web_fetch_max_redirects")
+    @classmethod
+    def validate_web_redirect_limit(cls, value: int) -> int:
+        if not 0 <= value <= 10:
+            raise ValueError("web_fetch_max_redirects must be between 0 and 10")
+        return value
+
+    @field_validator("web_fetch_user_agent")
+    @classmethod
+    def validate_web_user_agent(cls, value: str) -> str:
+        if not value.strip() or len(value) > 512 or "\n" in value or "\r" in value:
+            raise ValueError("web_fetch_user_agent must be a short single line")
+        return value
+
+    @field_validator("web_extract_max_chars")
+    @classmethod
+    def validate_web_text_limit(cls, value: int) -> int:
+        if not 256 <= value <= 1_000_000:
+            raise ValueError("web_extract_max_chars must be between 256 and 1000000")
+        return value
+
+    @field_validator("web_extract_max_concurrency")
+    @classmethod
+    def validate_web_concurrency(cls, value: int) -> int:
+        if not 1 <= value <= 32:
+            raise ValueError("web_extract_max_concurrency must be between 1 and 32")
         return value
 
     @field_validator("mysql_dsn")
