@@ -13,9 +13,11 @@
 #include "rag_core/document_store.h"
 #include "rag_core/grpc_service.h"
 #include "rag_core/image_store.h"
+#include "rag_core/video_store.h"
 #ifdef RAG_HAS_MILVUS
 #include "rag_core/milvus_document_store.h"
 #include "rag_core/milvus_image_store.h"
+#include "rag_core/milvus_video_store.h"
 #endif
 
 namespace {
@@ -109,6 +111,33 @@ std::unique_ptr<multimodal::rag::core::ImageStore> CreateImageStore() {
       "RAG_IMAGE_STORE must be either memory or milvus");
 }
 
+std::unique_ptr<multimodal::rag::core::VideoStore> CreateVideoStore() {
+  const auto backend =
+      GetEnv("RAG_VIDEO_STORE", GetEnv("RAG_DOCUMENT_STORE", "memory"));
+  if (backend == "memory") {
+    return std::make_unique<multimodal::rag::core::InMemoryVideoStore>();
+  }
+  if (backend == "milvus") {
+#ifdef RAG_HAS_MILVUS
+    multimodal::rag::core::MilvusVideoStoreConfig config{
+        .uri = GetEnv("RAG_MILVUS_URI", "http://127.0.0.1:19530"),
+        .token = GetEnv("RAG_MILVUS_TOKEN"),
+        .database = GetEnv("RAG_MILVUS_DATABASE", "default"),
+        .analyzer_params =
+            GetEnv("RAG_MILVUS_ANALYZER_PARAMS",
+                   R"({"tokenizer":"icu","filter":["lowercase"]})"),
+    };
+    return std::make_unique<multimodal::rag::core::MilvusVideoStore>(
+        std::move(config));
+#else
+    throw std::invalid_argument(
+        "RAG_VIDEO_STORE=milvus requires RAG_ENABLE_MILVUS=ON");
+#endif
+  }
+  throw std::invalid_argument(
+      "RAG_VIDEO_STORE must be either memory or milvus");
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -124,18 +153,21 @@ int main(int argc, char *argv[]) {
 
   std::unique_ptr<multimodal::rag::core::DocumentStore> document_store;
   std::unique_ptr<multimodal::rag::core::ImageStore> image_store;
+  std::unique_ptr<multimodal::rag::core::VideoStore> video_store;
   try {
     document_store = CreateDocumentStore();
     image_store = CreateImageStore();
+    video_store = CreateVideoStore();
   } catch (const std::exception &error) {
     std::cerr << "failed to configure retrieval stores: " << error.what()
               << '\n';
     return EXIT_FAILURE;
   }
   multimodal::rag::core::RagCoreServiceImpl service(document_store.get(),
-                                                     image_store.get());
+                                                     image_store.get(),
+                                                     video_store.get());
   multimodal::rag::core::IndexCoreServiceImpl index_service(
-      document_store.get(), image_store.get());
+      document_store.get(), image_store.get(), video_store.get());
   grpc::ServerBuilder builder;
   int selected_port = 0;
   builder.AddListeningPort(listen_address, grpc::InsecureServerCredentials(),

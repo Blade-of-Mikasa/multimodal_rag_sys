@@ -25,6 +25,12 @@ MySQL 元数据表、事务边界和迁移方式见
 [`docs/document_milvus_retrieval.md`](docs/document_milvus_retrieval.md)。
 图片安全归一化、通用 Vision 适配与独立 Milvus 图片检索见
 [`docs/image_milvus_retrieval.md`](docs/image_milvus_retrieval.md)。
+视频流式下载、FFmpeg 场景切分、通用 ASR 与 Milvus 时间片检索见
+[`docs/video_milvus_retrieval.md`](docs/video_milvus_retrieval.md)。
+证据约束生成、POST-over-SSE 协议、React 问答台和架构流程演示见
+[`docs/answer_generation_ui.md`](docs/answer_generation_ui.md)。
+分阶段离线评估、报告口径、OpenTelemetry traces/metrics 与成本估算见
+[`docs/evaluation_observability.md`](docs/evaluation_observability.md)。
 
 ## 初始化开发环境
 
@@ -43,6 +49,13 @@ RAG_PYTHON=/path/to/python3 ./scripts/bootstrap_dependencies.sh
 首次执行可能需要从源码编译 C++ 依赖，后续会复用仓库 `build/conan-home` 下的本地缓存。
 
 ## 验证
+
+验证视频流式下载、FFmpeg 命令契约、带时间戳 ASR、关键帧、Python/C++ 时间片
+闭环和 Milvus 视频适配器编译：
+
+```bash
+./scripts/verify_video_retrieval.sh
+```
 
 验证图片安全解码、Caption/OCR、通用 Embedding、统一 Kafka 路由、Python/C++
 闭环和 Milvus 图片适配器编译：
@@ -89,6 +102,21 @@ M03 完整验证会编译并启动 C++ Core，使用 Python 调用 `Health` 与 
 ./scripts/verify_python_api.sh
 ```
 
+验证 M12 查询规划、通用 ChatModel、回答编排、引用审计、SSE 及前端流解析：
+
+```bash
+./scripts/verify_answer_ui.sh
+```
+
+该脚本默认不执行前端生产构建；按 Codebase Pipeline 的人工编译约定，可在人工启动时
+设置 `RAG_VERIFY_FRONTEND_BUILD=1`。
+
+验证 M13 评估报告与 OpenTelemetry 埋点（不会启动编译阶段或外部服务）：
+
+```bash
+./scripts/verify_evaluation_observability.sh
+```
+
 完整验证会重新生成 Python 与 C++ 的 Protobuf/gRPC 代码，编译全部 C++ 测试，并运行双端契约检查：
 
 ```bash
@@ -126,11 +154,22 @@ PYTHONPATH="${PWD}/build/generated/python" \
 | `GET /health/ready` | 流量就绪检查；实时探测 C++ Core，不可用时返回 503 |
 | `POST /api/v1/assets/uploads` | 登记资产并创建受大小、类型、SHA-256 约束的预签名 PUT |
 | `POST /api/v1/assets/{asset_id}/versions/{version}/complete` | 校验对象并幂等创建入库任务 |
-| `POST /api/v1/queries/stream` | SSE 流式协议骨架；当前明确返回 `pipeline_not_connected` |
+| `POST /api/v1/queries/stream` | 查询规划、本地/联网检索、证据治理、回答与引用的 POST-over-SSE 流 |
 
 所有响应都会返回 `X-Request-ID`。可通过 `RAG_ENVIRONMENT`、`RAG_API_PREFIX`、
 `RAG_DEBUG`、`RAG_CORE_GRPC_TARGET`、`RAG_CORE_GRPC_TIMEOUT_SECONDS`、
-`RAG_MYSQL_DSN`、`RAG_OBJECT_STORAGE_*`、`RAG_EMBEDDING_*` 和
-`RAG_VISION_*` 等环境变量覆盖默认配置。
+`RAG_MYSQL_DSN`、`RAG_OBJECT_STORAGE_*`、`RAG_EMBEDDING_*`、`RAG_CHAT_*` 和
+`RAG_VISION_*`、`RAG_SPEECH_*`、`RAG_VIDEO_*` 等环境变量覆盖默认配置。
+
+本地启动前端（Vite 开发代理会注入仅供本地使用的演示身份头）：
+
+```bash
+cd services/web_ui
+npm install
+npm run dev
+```
+
+生产环境必须由完成认证的可信网关删除客户端同名头后重新注入
+`X-Tenant-ID`、`X-User-ID` 与 `X-ACL-IDs`，不能直接暴露当前 API 让浏览器自报身份。
 
 当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，用于本地开发与服务骨架验证；生产部署必须配合受控服务网络或补充 TLS。

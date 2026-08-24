@@ -9,6 +9,10 @@ CMakeUserPresets.json
 .mypy_cache/
 .ruff_cache/
 
+# Frontend
+node_modules/
+dist/
+
 # Local engineering journal (contains working notes; never commit)
 plan/engineering_journal.local.md
 

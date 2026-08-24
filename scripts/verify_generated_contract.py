@@ -33,10 +33,51 @@ def verify(generated_dir: pathlib.Path) -> None:
                 top_k=8,
             )
         ],
+        external_evidence=[
+            messages.Evidence(
+                evidence_id="web-contract",
+                content="public source",
+                source_scope=messages.SOURCE_SCOPE_WEB,
+                modality=messages.MODALITY_DOCUMENT,
+                url="https://example.com/source",
+                content_sha256="a" * 64,
+            )
+        ],
+        context_token_budget=4096,
+        max_evidence_tokens=1024,
     )
     decoded = messages.ExecutePlanRequest.FromString(request.SerializeToString())
-    if decoded.request_id != "req-m01-contract" or decoded.routes[0].top_k != 8:
+    if (
+        decoded.request_id != "req-m01-contract"
+        or decoded.routes[0].top_k != 8
+        or decoded.external_evidence[0].evidence_id != "web-contract"
+        or decoded.context_token_budget != 4096
+        or decoded.max_evidence_tokens != 1024
+    ):
         raise AssertionError("generated message round trip changed values")
+
+    response = messages.ExecutePlanResponse(
+        request_id="req-m01-contract",
+        context_token_count=512,
+        context_truncated=True,
+        token_count_method="utf8_byte_upper_bound",
+        evidence_decisions=[
+            messages.EvidenceDecision(
+                evidence_id="web-contract",
+                disposition="selected",
+                representative_evidence_id="web-contract",
+            )
+        ],
+    )
+    decoded_response = messages.ExecutePlanResponse.FromString(
+        response.SerializeToString()
+    )
+    if (
+        decoded_response.context_token_count != 512
+        or not decoded_response.context_truncated
+        or decoded_response.evidence_decisions[0].disposition != "selected"
+    ):
+        raise AssertionError("generated response round trip changed values")
 
     for stub_name in ("RagCoreServiceStub", "IndexCoreServiceStub"):
         if not hasattr(services, stub_name):

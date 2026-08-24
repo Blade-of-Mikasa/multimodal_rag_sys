@@ -167,6 +167,86 @@ class SettingsTest(unittest.TestCase):
         settings = Settings(vision_api_key="vision-secret", _env_file=None)
         self.assertNotIn("vision-secret", repr(settings))
 
+    def test_video_pipeline_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(speech_endpoint_url="grpc://speech", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_audio_chunk_seconds=751, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_scene_threshold=1.0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_max_duration_seconds=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(video_max_dimension=256, _env_file=None)
+
+        settings = Settings(speech_api_key="speech-secret", _env_file=None)
+        self.assertNotIn("speech-secret", repr(settings))
+
+    def test_web_search_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(bing_foundry_responses_url="grpc://foundry", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                bing_foundry_responses_url="http://foundry.example/responses",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(web_fetch_max_bytes=100, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(web_extract_max_concurrency=0, _env_file=None)
+        settings = Settings(
+            bing_foundry_access_token="foundry-secret",
+            _env_file=None,
+        )
+        self.assertNotIn("foundry-secret", repr(settings))
+
+    def test_answer_generation_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(chat_endpoint_url="grpc://chat", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(chat_max_output_tokens=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(answer_local_timeout_ms=99, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                answer_context_token_budget=1_000,
+                answer_max_evidence_tokens=1_001,
+                _env_file=None,
+            )
+
+        settings = Settings(chat_api_key="chat-secret", _env_file=None)
+        self.assertNotIn("chat-secret", repr(settings))
+
+    def test_telemetry_settings_require_secure_bounded_export(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(telemetry_enabled=True, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                telemetry_enabled=True,
+                otel_exporter_otlp_endpoint="grpc://collector:4317",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(
+                telemetry_enabled=True,
+                environment="production",
+                otel_exporter_otlp_endpoint="http://collector:4318",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(otel_trace_sample_ratio=1.1, _env_file=None)
+
+        settings = Settings(
+            telemetry_enabled=True,
+            environment="production",
+            otel_exporter_otlp_endpoint="https://collector.example/otel",
+            _env_file=None,
+        )
+        self.assertEqual(
+            "https://collector.example/otel",
+            settings.otel_exporter_otlp_endpoint,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
