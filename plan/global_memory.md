@@ -77,21 +77,19 @@
 | M06 | Kafka 入库任务链路 | 已完成（PR #6 已入 main） | ingest/retry/DLQ、幂等消费与状态流转完成 |
 | M07 | 文档入库与 Milvus 检索 | 已完成（随 PR #6 已入 main） | 文档解析、切片、Embedding、dense+BM25 召回闭环完成 |
 | M08 | 图片入库与召回 | 已完成（随 PR #6 已入 main） | Caption、OCR、向量化与图片证据返回完成 |
-| M09 | 视频入库与召回 | 主线集成 Review 中（PR #14） | ASR、场景切分、关键帧与时间片段召回完成 |
-| M10 | 联网搜索与网页抽取 | 主线集成 Review 中（PR #14） | SearchProvider、正文抽取、来源时间与失败降级完成 |
-| M11 | 证据治理与上下文构建 | 主线集成 Review 中（PR #14） | 去重、冲突规则、Token 预算与 citation 映射完成 |
-| M12 | 最终生成与前端问答 | 主线集成 Review 中（PR #14） | 基于证据生成、流式回答和引用展示完成 |
-| M13 | 评估与可观测性 | 主线集成 Review 中（PR #14） | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
+| M09 | 视频入库与召回 | 已完成（PR #14 已入 main） | ASR、场景切分、关键帧与时间片段召回完成 |
+| M10 | 联网搜索与网页抽取 | 已完成（PR #14 已入 main） | SearchProvider、正文抽取、来源时间与失败降级完成 |
+| M11 | 证据治理与上下文构建 | 已完成（PR #14 已入 main） | 去重、冲突规则、Token 预算与 citation 映射完成 |
+| M12 | 最终生成与前端问答 | 已完成（PR #14 已入 main） | 基于证据生成、流式回答和引用展示完成 |
+| M13 | 评估与可观测性 | 已完成（PR #14 已入 main） | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
 
 ## 4. 当前工作快照
 
-- 当前模块：M06-M08 已通过
-  [PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6) 进入 `main`。
-  M09-M12 已通过堆叠 PR 进入 M09 分支，M13 已通过
-  [PR #13](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/13) 进入同一分支；
-  [PR #14](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/14) 正在把 M09-M13
-  完整集成到 `main`，不新增业务实现。
-- 当前分支：`codex/m09-video-ingestion-retrieval`，作为 PR #14 的源分支，目标为 `main`。
+- 当前模块：M00-M13 全部完成。[PR #6](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/6)
+  已将 M06-M08 进入 `main`；
+  [PR #14](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/14) 已将 M09-M13
+  完整集成到 `main`，主线合并提交为 `44aa2ae`。
+- 当前分支：`codex/m13-main-integration-complete`，仅记录 PR #14 验收结果，目标为 `main`。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
@@ -171,9 +169,8 @@
   `git diff --check` 通过。按 Codebase Pipeline 人工编译规则未执行前端 production
   build，也未启动 C++/Milvus 编译；真实 OTLP Collector、模型、Foundry/Bing 和 gRPC
   闭环需集成环境验证。
-- 下一步：Review 并合并 PR #14；合并后刷新远端并验证 M09-M13 提交均已成为
-  `origin/main` 的祖先，再从最新 `main` 开始下一阶段。人工启动编译阶段时再执行前端
-  production build 与完整 C++/Milvus 验证。
+- 下一步：合并本次全局记忆状态 PR 后，从最新 `main` 规划下一阶段。人工启动编译阶段时
+  再执行前端 production build 与完整 C++/Milvus 验证。
 
 ## 5. 更新日志
 
@@ -240,3 +237,6 @@
   合入完整 M09 分支。新建
   [PR #14](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/14) 将已审阅的
   M09-M13 集成到 `main`，并固定“合并后验证 `origin/main` 祖先关系”的完成门槛。
+- 2026-08-24：[PR #14](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/14)
+  已合入 `main`，合并提交为 `44aa2ae`。M09-M13 的模块提交、M13 提交 `0b9c67d` 和
+  全局记忆提交 `9ce21b4` 均已验证为 `origin/main` 的祖先；M00-M13 至此全部进入主线。
