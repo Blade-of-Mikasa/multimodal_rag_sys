@@ -40,6 +40,14 @@
   通过 `EvidenceDecision` 审计。
 - 原始文件只进入对象存储；Kafka 消息只传 `asset_id`、`version`、`object_key` 等任务元数据。
 - 代码集成：每个模块使用独立 `codex/...` 分支；模块分支推送后创建 MR，后续修正继续推送同一 MR，Review 通过后再合并，禁止直接推送 `main`；PR 描述、变更摘要、验证结果和 Review 重点统一使用中文。
+- 评估基线：固定案例与运行观察使用严格 JSONL 契约，按全数据集分子/分母计算
+  micro-average；零分母输出 N/A，不伪造满分。第一阶段同时报告规划覆盖、无效召回、
+  证据覆盖/误删、冲突发现、答案正确性/完整性/忠实度、P50/P95/P99、Token、成本和
+  稳定失败码，不计算统一 RAG 总分，也不在 CLI 内隐式调用在线 LLM 裁判。
+- 可观测性基线：Python 使用显式 OpenTelemetry API/SDK 埋点并通过 OTLP/HTTP 批量
+  导出；`rag.query` 覆盖完整 SSE 生命周期，planning/retrieving/generating 使用子 span。
+  流式 SLO 看 `rag.query.duration`，不把 HTTP 响应对象创建时间误当端到端时间；指标
+  标签禁止 request/tenant/user/query/URL 等高基数字段，供应商终态和错误先归一化。
 
 ## 2. 模块完成规则
 
@@ -68,17 +76,18 @@
 | M09 | 视频入库与召回 | Review 中 | ASR、场景切分、关键帧与时间片段召回完成 |
 | M10 | 联网搜索与网页抽取 | 已完成（随 PR #10 合入 M09 分支） | SearchProvider、正文抽取、来源时间与失败降级完成 |
 | M11 | 证据治理与上下文构建 | 已完成（PR #11） | 去重、冲突规则、Token 预算与 citation 映射完成 |
-| M12 | 最终生成与前端问答 | 开发完成（待创建 PR） | 基于证据生成、流式回答和引用展示完成 |
-| M13 | 评估与可观测性 | 待开始 | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
+| M12 | 最终生成与前端问答 | 已完成（PR #12） | 基于证据生成、流式回答和引用展示完成 |
+| M13 | 评估与可观测性 | 开发完成（待创建 PR） | 分阶段评估、OpenTelemetry、核心指标和报告完成 |
 
 ## 4. 当前工作快照
 
-- 当前模块：M12 最终生成与前端问答开发、文档、依赖锁和可执行验证脚本已完成，
-  正在创建 Review PR。[PR #11](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/11)
-  已合入 M09 集成分支；[PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)
+- 当前模块：M12 已通过
+  [PR #12](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/12) 合入 M09
+  集成分支。M13 分阶段评估、报告 CLI 和 OpenTelemetry traces/metrics 已开发完成，
+  待创建 Review PR；[PR #9](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/9)
   仍是当前堆叠链进入上游分支的父 PR。
-- 当前分支：`codex/m12-answer-ui`，目标分支为
-  `codex/m09-video-ingestion-retrieval`（已包含 M10-M11）。
+- 当前分支：`codex/m13-evaluation-observability`，目标分支为
+  `codex/m09-video-ingestion-retrieval`（已包含 M10-M12）。
 - 依赖基线：Python 工具链由 `requirements/tooling.lock` 锁定；C++ 工具链由 `conanfile.py` 和 `conan.lock` 锁定，CMake 也由 Conan 提供，不依赖系统预装。
 - API/Core 基线：FastAPI 通过异步 `GrpcCoreClient` 调用独立 C++ Core 进程；Core 提供 `Health` 和空结果 `ExecutePlan`，HTTP `/health/ready` 实时探测 Core，不可用时返回 503。
 - MySQL 基线：7 张基础表覆盖 ACL、资产、版本、入库任务、会话和消息；任务唯一幂等键及 Kafka 投递字段为 M06 的至少一次消费预留事务边界。
@@ -142,15 +151,24 @@
   POST-over-SSE、限制单事件大小并校验 sequence 严格递增。回答按纯文本渲染，仅把
   内核已返回的 `[证据 N]` 建立来源链接，外链再次限制为 HTTP(S)。页面包含问答工作台、
   证据/冲突卡片、Python/C++ 架构图和可播放的六阶段流程演示。
+- 离线评估基线：`rag-evaluate` 消费每行 `case+observation` 的严格 JSONL，使用版本化
+  route/evidence/claim/conflict ID 做确定性集合评估。回答事实分别标注 correct 和
+  supported_by_evidence；报告输出 `summary.json`、中文 `report.md`、输入 SHA-256、
+  可选 baseline 差值、各阶段 P95 和失败分布。零分母固定为 null/N/A。
+- 在线遥测基线：OpenTelemetry 1.44.0 默认关闭；启用时使用 W3C 入站 context、
+  BatchSpanProcessor 和 OTLP/HTTP trace/metric exporter，staging/production endpoint
+  强制 HTTPS。规划和最终回答的 Token 合并计量，并按配置的每百万 Token 单价估算成本；
+  metric attributes 只保留有限范围、阶段、终态和稳定错误码。
 - 传输安全：当前 gRPC 使用明文连接且默认只监听 `127.0.0.1`，仅作为本地与服务骨架基线；生产部署需使用受控服务网络或 TLS。
 - 环境说明：Apple Clang 21 环境首次初始化需要从源码构建部分 C++ 依赖；缓存位于仓库 `build/conan-home`，后续可复用。
-- 最近验证：Python 全量 143 项中 136 项通过、7 项因未启动 C++ Core 跳过；M12 专项
-  36 项和前端 Vitest 3 项通过，TypeScript `--noEmit`、`pip check`、npm audit、
-  `git diff --check` 通过。桌面与 390px 移动端完成浏览器视觉验收，控制台无错误，
-  流程动画状态可正确推进。按 Codebase Pipeline 人工编译规则未执行前端 production
-  build，也未启动 C++/Milvus 编译；真实模型、Foundry/Bing 和 gRPC 闭环需集成环境验证。
-- 下一步：为 M12 创建中文 PR 并 Review；人工启动编译阶段时执行
-  `RAG_VERIFY_FRONTEND_BUILD=1 ./scripts/verify_answer_ui.sh`。
+- 最近验证：Python 全量 152 项中 145 项通过、7 项因未启动 C++ Core 跳过；M13 专项
+  39 项通过并真实生成临时 JSON/Markdown 报告，`rag-evaluate` 安装入口可用。受影响的
+  M12 专项 37 项、前端 Vitest 3 项和 TypeScript `--noEmit` 通过；`pip check`、
+  `git diff --check` 通过。按 Codebase Pipeline 人工编译规则未执行前端 production
+  build，也未启动 C++/Milvus 编译；真实 OTLP Collector、模型、Foundry/Bing 和 gRPC
+  闭环需集成环境验证。
+- 下一步：为 M13 创建中文 PR 并 Review；人工启动编译阶段时再执行前端 production
+  build 与完整 C++/Milvus 验证。
 
 ## 5. 更新日志
 
@@ -205,3 +223,9 @@
   React 问答台展示真实流、来源、冲突、架构图和六阶段动画。Python 全量与 M12 专项、
   前端单测/类型检查、依赖审计和桌面/移动视觉验收通过，production build 按人工编译规则
   留给 Review 阶段启动。
+- 2026-08-22：M12 通过 [PR #12](https://github.com/Blade-of-Mikasa/multimodal_rag_sys/pull/12)
+  合入 M09 集成分支。M13 开发完成：新增严格 JSONL 评估契约、八项核心指标和答案完整
+  诊断、零分母/N/A 与最近秩百分位口径、基线差值、输入哈希及中英文机器/人工报告；新增
+  显式 OpenTelemetry HTTP/RAG/stage spans、有限基数 metrics、W3C 父子 trace、规划与
+  生成 Token/成本计量和 OTLP/HTTP 生命周期。Python 全量 152 项、M13 专项 39 项、
+  M12/前端非编译回归和依赖检查通过。

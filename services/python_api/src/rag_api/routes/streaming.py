@@ -86,53 +86,71 @@ async def stream_query(
     )
 
     async def events() -> AsyncIterator[str]:
-        sequence = 0
-        yield encode_sse(
-            StreamEvent(
-                event="accepted",
-                request_id=request_id,
-                sequence=sequence,
-                data={
-                    "conversation_id": conversation_id,
-                    "retrieval_scope": payload.retrieval_scope,
-                    "modalities": payload.modalities,
-                },
-            )
+        observation = request.app.state.telemetry.start_query(
+            request_id=request_id,
+            retrieval_scope=payload.retrieval_scope,
+            modalities=tuple(payload.modalities),
+            parent_context=getattr(request.state, "telemetry_context", None),
         )
-        sequence += 1
+        sequence = 0
         try:
-            updates = answer_service(request).stream(
-                request_id=request_id,
-                query=payload.query,
-                tenant_id=principal.tenant_id,
-                user_id=principal.user_id,
-                conversation_id=conversation_id,
-                allowed_acl_ids=allowed_acl_ids,
-                preferences=preferences,
+            yield encode_sse(
+                StreamEvent(
+                    event="accepted",
+                    request_id=request_id,
+                    sequence=sequence,
+                    data={
+                        "conversation_id": conversation_id,
+                        "retrieval_scope": payload.retrieval_scope,
+                        "modalities": payload.modalities,
+                    },
+                )
             )
-            async for update in _with_heartbeats(
-                updates,
-                interval_seconds=request.app.state.settings.sse_heartbeat_seconds,
-            ):
-                if update is None:
-                    event = StreamEvent(
-                        event="heartbeat",
-                        request_id=request_id,
-                        sequence=sequence,
-                        data={},
-                    )
-                else:
-                    event = StreamEvent(
-                        event=update.event,
-                        request_id=request_id,
-                        sequence=sequence,
-                        data=update.data,
-                    )
-                yield encode_sse(event)
-                sequence += 1
+            sequence += 1
+            with observation.activate():
+                updates = answer_service(request).stream(
+                    request_id=request_id,
+                    query=payload.query,
+                    tenant_id=principal.tenant_id,
+                    user_id=principal.user_id,
+                    conversation_id=conversation_id,
+                    allowed_acl_ids=allowed_acl_ids,
+                    preferences=preferences,
+                )
+                async for update in _with_heartbeats(
+                    updates,
+                    interval_seconds=(
+                        request.app.state.settings.sse_heartbeat_seconds
+                    ),
+                ):
+                    if update is None:
+                        event = StreamEvent(
+                            event="heartbeat",
+                            request_id=request_id,
+                            sequence=sequence,
+                            data={},
+                        )
+                    else:
+                        observation.observe(update.event, update.data)
+                        event = StreamEvent(
+                            event=update.event,
+                            request_id=request_id,
+                            sequence=sequence,
+                            data=update.data,
+                        )
+                    yield encode_sse(event)
+                    sequence += 1
         except asyncio.CancelledError:
+            observation.fail(
+                "CLIENT_CANCELLED", retryable=False, cancelled=True
+            )
             raise
         except AnswerPipelineError as error:
+            observation.fail(
+                error.code,
+                retryable=error.retryable,
+                error=error,
+            )
             yield encode_sse(
                 StreamEvent(
                     event="error",
@@ -145,8 +163,11 @@ async def stream_query(
                     },
                 )
             )
-        except Exception:
+        except Exception as error:
             LOGGER.exception("unexpected answer pipeline failure")
+            observation.fail(
+                "INTERNAL_ERROR", retryable=False, error=error
+            )
             yield encode_sse(
                 StreamEvent(
                     event="error",
@@ -158,6 +179,10 @@ async def stream_query(
                         "retryable": False,
                     },
                 )
+            )
+        finally:
+            observation.fail(
+                "CLIENT_CANCELLED", retryable=False, cancelled=True
             )
 
     return StreamingResponse(

@@ -30,6 +30,7 @@ from .domain import (
     ChatRequest,
     PlannedRoute,
     QueryPlanner,
+    RetrievalPlan,
 )
 
 
@@ -89,6 +90,7 @@ class AnswerService:
                     _planned_route_data(index, route)
                     for index, route in enumerate(plan.routes)
                 ],
+                **_planner_observability_data(plan),
             },
         )
 
@@ -367,6 +369,21 @@ async def _insufficient_evidence_updates() -> AsyncIterator[AnswerUpdate]:
             "uncited_answer": False,
         },
     )
+
+
+def _planner_observability_data(plan: RetrievalPlan) -> dict[str, object]:
+    data: dict[str, object] = {}
+    if plan.model_id is not None and plan.model_version is not None:
+        data["model"] = {
+            "id": plan.model_id,
+            "version": plan.model_version,
+        }
+    if plan.usage is not None:
+        data["usage"] = {
+            "input_tokens": plan.usage.input_tokens,
+            "output_tokens": plan.usage.output_tokens,
+        }
+    return data
 
 
 def _answer_request(

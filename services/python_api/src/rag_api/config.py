@@ -132,6 +132,13 @@ class Settings(BaseSettings):
     web_fetch_user_agent: str = "multimodal-rag/0.1"
     web_extract_max_chars: int = 100_000
     web_extract_max_concurrency: int = 4
+    telemetry_enabled: bool = False
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_export_timeout_seconds: float = 10.0
+    otel_metric_export_interval_ms: int = 60_000
+    otel_trace_sample_ratio: float = 1.0
+    chat_input_cost_per_million_tokens_usd: float = 0.0
+    chat_output_cost_per_million_tokens_usd: float = 0.0
 
     @field_validator("api_prefix")
     @classmethod
@@ -566,6 +573,69 @@ class Settings(BaseSettings):
         if not 1 <= value <= 32:
             raise ValueError("web_extract_max_concurrency must be between 1 and 32")
         return value
+
+    @field_validator("otel_exporter_otlp_endpoint")
+    @classmethod
+    def validate_otel_endpoint(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("otel_exporter_otlp_endpoint must be an HTTP(S) base URL")
+        return value.rstrip("/")
+
+    @field_validator("otel_export_timeout_seconds")
+    @classmethod
+    def validate_otel_timeout(cls, value: float) -> float:
+        if not 0.1 <= value <= 120:
+            raise ValueError("otel_export_timeout_seconds must be between 0.1 and 120")
+        return value
+
+    @field_validator("otel_metric_export_interval_ms")
+    @classmethod
+    def validate_otel_metric_interval(cls, value: int) -> int:
+        if not 1_000 <= value <= 3_600_000:
+            raise ValueError(
+                "otel_metric_export_interval_ms must be between 1000 and 3600000"
+            )
+        return value
+
+    @field_validator("otel_trace_sample_ratio")
+    @classmethod
+    def validate_otel_sample_ratio(cls, value: float) -> float:
+        if not 0 <= value <= 1:
+            raise ValueError("otel_trace_sample_ratio must be between 0 and 1")
+        return value
+
+    @field_validator(
+        "chat_input_cost_per_million_tokens_usd",
+        "chat_output_cost_per_million_tokens_usd",
+    )
+    @classmethod
+    def validate_chat_cost(cls, value: float) -> float:
+        if not 0 <= value <= 1_000_000:
+            raise ValueError("chat token cost must be between 0 and 1000000 USD")
+        return value
+
+    @model_validator(mode="after")
+    def validate_telemetry_settings(self) -> "Settings":
+        if self.telemetry_enabled and self.otel_exporter_otlp_endpoint is None:
+            raise ValueError(
+                "otel_exporter_otlp_endpoint is required when telemetry is enabled"
+            )
+        if (
+            self.telemetry_enabled
+            and self.environment in {"staging", "production"}
+            and self.otel_exporter_otlp_endpoint is not None
+            and not self.otel_exporter_otlp_endpoint.startswith("https://")
+        ):
+            raise ValueError("staging and production OTLP endpoints must use HTTPS")
+        return self
 
     @field_validator("mysql_dsn")
     @classmethod

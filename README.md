@@ -29,6 +29,8 @@ MySQL 元数据表、事务边界和迁移方式见
 [`docs/video_milvus_retrieval.md`](docs/video_milvus_retrieval.md)。
 证据约束生成、POST-over-SSE 协议、React 问答台和架构流程演示见
 [`docs/answer_generation_ui.md`](docs/answer_generation_ui.md)。
+分阶段离线评估、报告口径、OpenTelemetry traces/metrics 与成本估算见
+[`docs/evaluation_observability.md`](docs/evaluation_observability.md)。
 
 ## 初始化开发环境
 
@@ -108,6 +110,12 @@ M03 完整验证会编译并启动 C++ Core，使用 Python 调用 `Health` 与 
 
 该脚本默认不执行前端生产构建；按 Codebase Pipeline 的人工编译约定，可在人工启动时
 设置 `RAG_VERIFY_FRONTEND_BUILD=1`。
+
+验证 M13 评估报告与 OpenTelemetry 埋点（不会启动编译阶段或外部服务）：
+
+```bash
+./scripts/verify_evaluation_observability.sh
+```
 
 完整验证会重新生成 Python 与 C++ 的 Protobuf/gRPC 代码，编译全部 C++ 测试，并运行双端契约检查：
 

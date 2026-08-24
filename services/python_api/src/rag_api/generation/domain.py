@@ -133,6 +133,9 @@ class PlannedRoute:
 @dataclass(frozen=True, slots=True)
 class RetrievalPlan:
     routes: tuple[PlannedRoute, ...]
+    usage: TokenUsage | None = None
+    model_id: str | None = None
+    model_version: str | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.routes) <= 6:
@@ -143,6 +146,16 @@ class RetrievalPlan:
         }
         if len(keys) != len(self.routes):
             raise ValueError("retrieval plan routes must be unique")
+        if (self.model_id is None) != (self.model_version is None):
+            raise ValueError("planner model ID and version must be set together")
+        if self.model_id is not None and (
+            not self.model_id.strip()
+            or not self.model_version
+            or not self.model_version.strip()
+            or len(self.model_id) > 256
+            or len(self.model_version) > 256
+        ):
+            raise ValueError("planner model identity must be bounded non-blank text")
 
 
 class QueryPlanner(Protocol):

@@ -15,6 +15,9 @@ dependencies = [
     "asyncmy==0.2.13",
     "fastapi==0.141.1",
     "grpcio==1.83.0",
+    "opentelemetry-api==1.44.0",
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",
+    "opentelemetry-sdk==1.44.0",
     "pydantic==2.13.4",
     "pydantic-settings==2.15.0",
     "Pillow==12.3.0",
@@ -27,6 +30,7 @@ dependencies = [
 
 [project.scripts]
 rag-document-worker = "rag_api.documents.worker_main:main"
+rag-evaluate = "rag_api.evaluation.cli:main"
 rag-ingest-worker = "rag_api.ingestion.worker_main:main"
 rag-kafka-outbox = "rag_api.kafka.publisher_main:main"
 
