@@ -1,6 +1,7 @@
 # Fully resolved on Python 3.12.13. Keep direct pins in api.in and update this
 # file only after validating the HTTP service and streaming contract.
 aiobotocore==3.8.0
+aiokafka==0.14.0
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3
 aioitertools==0.13.0
@@ -10,6 +11,7 @@ annotated-types==0.8.0
 alembic==1.19.1
 anyio==4.14.2
 asyncmy==0.2.13
+async-timeout==5.0.1
 attrs==26.1.0
 botocore==1.43.46
 click==8.4.2
@@ -24,10 +26,13 @@ jmespath==1.1.0
 Mako==1.4.1
 MarkupSafe==3.0.3
 multidict==6.7.1
+packaging==26.3
+pillow==12.3.0
 propcache==0.5.2
 pydantic==2.13.4
 pydantic_core==2.46.4
 pydantic-settings==2.15.0
+pypdf==6.14.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 six==1.17.0

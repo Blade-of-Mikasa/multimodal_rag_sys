@@ -85,6 +85,88 @@ class SettingsTest(unittest.TestCase):
 
         self.assertNotIn("storage-secret", repr(settings))
 
+    def test_kafka_settings_validate_names_security_and_bounds(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(kafka_bootstrap_servers="missing-port", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(kafka_bootstrap_servers="kafka:70000", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(kafka_ingest_topic="invalid topic", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                kafka_retry_topic="rag.ingest.v1",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(kafka_security_protocol="SASL_SSL", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                kafka_sasl_username="rag-user",
+                kafka_sasl_password="secret",
+                _env_file=None,
+            )
+        with self.assertRaises(ValidationError):
+            Settings(
+                kafka_retry_base_seconds=10,
+                kafka_retry_max_seconds=5,
+                _env_file=None,
+            )
+
+        settings = Settings(
+            kafka_bootstrap_servers="kafka-a:9092, kafka-b:9092",
+            kafka_security_protocol="SASL_SSL",
+            kafka_sasl_username="rag-user",
+            kafka_sasl_password="kafka-secret",
+            _env_file=None,
+        )
+
+        self.assertEqual(
+            ["kafka-a:9092", "kafka-b:9092"],
+            settings.kafka_bootstrap_server_list,
+        )
+        self.assertNotIn("kafka-secret", repr(settings))
+
+    def test_document_pipeline_settings_are_bounded(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(embedding_endpoint_url="grpc://embedding", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(embedding_dimension=0, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(document_chunk_max_chars=100, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(core_grpc_index_batch_max_bytes=4_000_000, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                document_chunk_max_chars=256,
+                document_chunk_overlap_chars=256,
+                _env_file=None,
+            )
+
+        settings = Settings(
+            embedding_api_key="embedding-secret",
+            document_chunk_max_chars=512,
+            document_chunk_overlap_chars=64,
+            _env_file=None,
+        )
+        self.assertNotIn("embedding-secret", repr(settings))
+
+    def test_image_pipeline_settings_are_bounded_and_secret(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(vision_endpoint_url="grpc://vision", _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(image_model_max_bytes=30_000_000, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(image_max_pixels=999_999, _env_file=None)
+        with self.assertRaises(ValidationError):
+            Settings(
+                vision_caption_max_bytes=20_000,
+                vision_ocr_max_bytes=50_000,
+                _env_file=None,
+            )
+
+        settings = Settings(vision_api_key="vision-secret", _env_file=None)
+        self.assertNotIn("vision-secret", repr(settings))
+
 
 if __name__ == "__main__":
     unittest.main()

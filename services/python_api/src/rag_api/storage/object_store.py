@@ -21,6 +21,10 @@ class ObjectNotFoundError(ObjectStoreError):
     """The requested object key does not exist."""
 
 
+class ObjectTooLargeError(ObjectStoreError):
+    """The object exceeded the caller's bounded download budget."""
+
+
 @dataclass(frozen=True, slots=True)
 class PresignedUpload:
     url: str
@@ -50,6 +54,8 @@ class ObjectStore(Protocol):
     ) -> PresignedUpload: ...
 
     async def head(self, object_key: str) -> StoredObject: ...
+
+    async def download(self, object_key: str, *, max_bytes: int) -> bytes: ...
 
     async def delete(self, object_key: str) -> None: ...
 
@@ -164,6 +170,41 @@ class S3ObjectStore:
             version_id=response.get("VersionId"),
             metadata=dict(response.get("Metadata", {})),
         )
+
+    async def download(self, object_key: str, *, max_bytes: int) -> bytes:
+        if max_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+        try:
+            async with self._client() as client:
+                response = await client.get_object(
+                    Bucket=self._settings.object_storage_bucket,
+                    Key=object_key,
+                )
+                content_length = int(response.get("ContentLength", 0))
+                if content_length > max_bytes:
+                    raise ObjectTooLargeError(object_key)
+                body = response["Body"]
+                chunks: list[bytes] = []
+                total = 0
+                async with body:
+                    async for chunk in body.iter_chunks(chunk_size=64 * 1024):
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise ObjectTooLargeError(object_key)
+                        chunks.append(chunk)
+        except ObjectTooLargeError:
+            raise
+        except ClientError as error:
+            status = error.response.get("ResponseMetadata", {}).get(
+                "HTTPStatusCode"
+            )
+            code = error.response.get("Error", {}).get("Code")
+            if status == 404 or code in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFoundError(object_key) from error
+            raise ObjectStoreError("failed to download object") from error
+        except (BotoCoreError, KeyError, TypeError, ValueError) as error:
+            raise ObjectStoreError("failed to download object") from error
+        return b"".join(chunks)
 
     async def delete(self, object_key: str) -> None:
         try:
